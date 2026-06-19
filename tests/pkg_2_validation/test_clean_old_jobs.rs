@@ -31,7 +31,7 @@ async fn test_clean_old_jobs() {
         &owner_private_key,
         &owner_address.to_bech32("erd").to_string(),
     );
-    interactor.register_wallet(owner_wallet.clone()).await;
+    interactor.register_wallet(owner_wallet).await;
     fund_address_on_simulator(
         &owner_address.to_bech32("erd").to_string(),
         "100000000000000000000000",
@@ -40,13 +40,13 @@ async fn test_clean_old_jobs() {
     .await;
 
     // Deploy Registries
-    let mut identity_interactor =
+    let identity_interactor =
         IdentityRegistryInteractor::init(&mut interactor, owner_address.clone()).await;
     identity_interactor
         .issue_token(&mut interactor, "AgentToken", "AGENT")
         .await;
 
-    let mut validation_interactor = ValidationRegistryInteractor::init(
+    let validation_interactor = ValidationRegistryInteractor::init(
         &mut interactor,
         owner_address.clone(),
         identity_interactor.address(),
@@ -63,7 +63,7 @@ async fn test_clean_old_jobs() {
     // NOTE: This test is #[ignore]'d because the chain simulator has no API to set 
     // block timestamps directly, and generating 43k+ blocks is impractical.
     // If timestamp manipulation becomes available, replace this with the proper API call.
-    interactor.generate_blocks(200).await;
+    let _ = interactor.generate_blocks(200).await;
     // 3. Init "new" job
     let new_job_id = "job-new";
     validation_interactor
@@ -95,7 +95,7 @@ async fn test_clean_old_jobs() {
     // 6. Verify new job is NOT gone
     // Try to init new_job again -> Should fail
     println!("Verifying new job persistence...");
-    let err = interactor
+    interactor
         .tx()
         .from(&owner_address)
         .to(validation_interactor.address())

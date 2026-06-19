@@ -21,7 +21,7 @@ async fn test_feedback_without_authorization() {
     let employer = interactor.register_wallet(test_wallets::bob()).await;
 
     // 1. Deploy All Registries
-    let (mut identity, validation_addr, reputation_addr) =
+    let (identity, validation_addr, reputation_addr) =
         crate::common::deploy_all_registries(&mut interactor, owner.clone()).await;
 
     identity
@@ -32,7 +32,6 @@ async fn test_feedback_without_authorization() {
             vec![],
         )
         .await;
-    drop(identity);
 
     // 2. Init Job (Employer)
     let job_id = "job-auth-test";

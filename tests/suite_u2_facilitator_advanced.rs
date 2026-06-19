@@ -40,11 +40,11 @@ async fn test_facilitator_advanced() {
     fund_address_on_simulator(alice_bech32, "100000000000000000000000", &gateway_url).await;
 
     let alice_wallet = Wallet::from_pem_file(pem_path.to_str().unwrap()).expect("PEM load");
-    let alice_addr = interactor.register_wallet(alice_wallet.clone()).await;
+    let alice_addr = interactor.register_wallet(alice_wallet).await;
 
     let buyer_pk = generate_random_private_key();
     let buyer_wallet = Wallet::from_private_key(&buyer_pk).unwrap();
-    let buyer_bech32 = buyer_wallet.address().to_string();
+    let buyer_bech32 = buyer_wallet.to_address().to_bech32("erd").to_string();
     fund_address_on_simulator(&buyer_bech32, "1000000000000000000000", &gateway_url).await;
 
     // ── 3. Deploy Identity Registry + Register Agent with Service Config ──
@@ -366,7 +366,7 @@ async fn test_facilitator_advanced() {
 
     // Issue ESDT for buyer
     generate_blocks_on_simulator(25, &gateway_url).await;
-    let sender_sc_addr = interactor.register_wallet(buyer_wallet.clone()).await;
+    interactor.register_wallet(buyer_wallet).await;
     let token_id = issue_fungible_esdt(
         &mut interactor,
         &alice_addr,

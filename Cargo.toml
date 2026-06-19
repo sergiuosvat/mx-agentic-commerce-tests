@@ -22,7 +22,6 @@ bech32 = "0.11.1"
 futures = "0.3"
 identity-registry-interactor = { version = "0.0.0", path = "../mx-8004/identity-registry/interactor" }
 common = { path = "../mx-8004/common" }
-mpp-session-mvx-interactor = { path = "../mpp-session-mvx/interactor" }
 ed25519-dalek = { version = "2.2.0", features = ["rand_core"] }
 tiny-keccak = { version = "2.0.2", features = ["keccak"] }
 

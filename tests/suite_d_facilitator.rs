@@ -1,7 +1,6 @@
 use mx_agentic_commerce_tests::ProcessManager;
 use multiversx_sc_snippets::imports::*;
 use tokio::time::{sleep, Duration};
-use reqwest;
 use rand::RngCore;
 use bech32::{self, Hrp, Bech32};
 

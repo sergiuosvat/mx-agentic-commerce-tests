@@ -56,8 +56,7 @@ async fn test_update_agent_flow() {
             "https://updated.example.com",
             vec![],
             vec![],
-            &token_str,
-            1u64,
+            (&token_str, 1u64),
         )
         .await;
     println!("Agent updated: UpdatedBot");

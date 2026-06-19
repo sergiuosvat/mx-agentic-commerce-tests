@@ -1185,25 +1185,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "mpp-session-mvx"
-version = "0.1.1"
-dependencies = [
- "multiversx-sc",
-]
-
-[[package]]
-name = "mpp-session-mvx-interactor"
-version = "0.0.0"
-dependencies = [
- "clap",
- "mpp-session-mvx",
- "multiversx-sc",
- "multiversx-sc-snippets",
- "serde",
- "toml",
-]
-
-[[package]]
 name = "multiversx-chain-core"
 version = "0.21.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1453,7 +1434,6 @@ dependencies = [
  "futures",
  "hex",
  "identity-registry-interactor",
- "mpp-session-mvx-interactor",
  "multiversx-sc",
  "multiversx-sc-codec",
  "multiversx-sc-derive",

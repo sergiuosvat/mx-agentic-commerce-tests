@@ -36,7 +36,7 @@ async fn test_moltbot_lifecycle() {
     println!("Simulator ChainID: {}", chain_id);
 
     // 3. Deploy Identity Registry + Issue Token
-    let mut registry = IdentityRegistryInteractor::init(&mut interactor, alice.clone()).await;
+    let registry = IdentityRegistryInteractor::init(&mut interactor, alice.clone()).await;
     let registry_address = address_to_bech32(registry.address());
     println!("Registry Address: {}", registry_address);
 
@@ -49,7 +49,7 @@ async fn test_moltbot_lifecycle() {
     // 4. Setup Moltbot Wallet (FUNDED — direct TX path)
     let moltbot_pk = generate_random_private_key();
     let moltbot_wallet_obj = Wallet::from_private_key(&moltbot_pk).unwrap();
-    let moltbot_address = interactor.register_wallet(moltbot_wallet_obj.clone()).await;
+    let moltbot_address = interactor.register_wallet(moltbot_wallet_obj).await;
     let moltbot_address_bech32 = address_to_bech32(&moltbot_address);
 
     println!("Funding Moltbot: {}", moltbot_address_bech32);

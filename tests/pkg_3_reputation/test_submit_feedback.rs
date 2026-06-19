@@ -18,7 +18,7 @@ async fn test_submit_feedback() {
     let employer = interactor.register_wallet(test_wallets::bob()).await;
 
     // 1. Deploy All Registries
-    let (mut identity, validation_addr, reputation_addr) =
+    let (identity, validation_addr, reputation_addr) =
         crate::common::deploy_all_registries(&mut interactor, owner.clone()).await;
 
     // Register Agent (Nonce 1)
@@ -30,7 +30,6 @@ async fn test_submit_feedback() {
             vec![],
         )
         .await;
-    drop(identity);
 
     // 2. Init Job, Submit Proof, Verify Job
     let job_id = "job-feedback-1";

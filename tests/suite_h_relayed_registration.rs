@@ -24,7 +24,7 @@ async fn test_relayed_registration() {
     let alice = interactor.register_wallet(test_wallets::alice()).await;
 
     // Deploy Registry
-    let mut registry = IdentityRegistryInteractor::init(&mut interactor, alice.clone()).await;
+    let registry = IdentityRegistryInteractor::init(&mut interactor, alice.clone()).await;
     let registry_addr = address_to_bech32(registry.address());
 
     // Issue token (required before register_agent can mint NFTs)

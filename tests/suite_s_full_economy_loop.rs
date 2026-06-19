@@ -1,4 +1,4 @@
-use multiversx_sc::types::{Address, CodeMetadata, ManagedBuffer};
+use multiversx_sc::types::ManagedBuffer;
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
 use tokio::time::{sleep, Duration};
@@ -84,10 +84,6 @@ async fn test_full_agent_economy_loop() {
         )
         .await;
     println!("\n✅ Phase 1: Bob registered as agent (nonce=1) with price=0.5 EGLD");
-
-    // Drop identities to release borrow
-    drop(identity);
-    drop(bob_identity);
 
     // ── 4. Alice (Buyer) discovers Bob's service config via view ──
     let client = reqwest::Client::new();

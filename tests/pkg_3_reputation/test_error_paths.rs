@@ -5,8 +5,6 @@ use tokio::time::{sleep, Duration};
 
 use crate::common::{address_to_bech32, deploy_all_registries, fund_address_on_simulator};
 
-const GATEWAY_PORT: u16 = 8085;
-
 /// Returns (pm, interactor, reputation_addr, validation_addr, owner, employer, mallory)
 /// NOTE: pm MUST be kept alive for the duration of the test to prevent the simulator from being killed.
 async fn setup_env() -> (
@@ -85,7 +83,7 @@ async fn setup_env() -> (
 
 #[tokio::test]
 async fn test_submit_feedback_non_employer() {
-    let (_pm, mut interactor, reputation_addr, _, _owner, _employer, mallory) = setup_env().await;
+    let (pm, mut interactor, reputation_addr, .., mallory) = setup_env().await;
 
     let job_id_buf = ManagedBuffer::<StaticApi>::new_from_bytes(b"job-rep-err");
 
@@ -102,11 +100,13 @@ async fn test_submit_feedback_non_employer() {
         .returns(ExpectError(4, "Only the employer can provide feedback"))
         .run()
         .await;
+
+    drop(pm);
 }
 
 #[tokio::test]
 async fn test_submit_feedback_duplicate() {
-    let (_pm, mut interactor, reputation_addr, _, _owner, employer, _) = setup_env().await;
+    let (pm, mut interactor, reputation_addr, _, _, employer, ..) = setup_env().await;
 
     let job_id_buf = ManagedBuffer::<StaticApi>::new_from_bytes(b"job-rep-err");
 
@@ -136,12 +136,14 @@ async fn test_submit_feedback_duplicate() {
         .returns(ExpectError(4, "Feedback already provided for this job"))
         .run()
         .await;
+
+    drop(pm);
 }
 
 #[tokio::test]
 async fn test_append_response_permissionless() {
     // ERC-8004: append_response is now permissionless — anyone can call it
-    let (_pm, mut interactor, reputation_addr, _, _, _owner, mallory) = setup_env().await;
+    let (pm, mut interactor, reputation_addr, .., mallory) = setup_env().await;
 
     let job_id_buf = ManagedBuffer::<StaticApi>::new_from_bytes(b"job-rep-err");
     let response_uri = ManagedBuffer::<StaticApi>::new_from_bytes(b"https://response.example.com");
@@ -159,4 +161,6 @@ async fn test_append_response_permissionless() {
         .await;
 
     println!("append_response by anyone succeeded — ERC-8004 compliant");
+
+    drop(pm);
 }

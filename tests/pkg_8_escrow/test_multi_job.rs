@@ -1,6 +1,7 @@
 use crate::common::{
     create_pem_file, fund_address_on_simulator, generate_random_private_key,
-    EscrowInteractor, EscrowStatus, IdentityRegistryInteractor, ValidationRegistryInteractor,
+    EscrowDeposit, EscrowInteractor, EscrowStatus, IdentityRegistryInteractor,
+    ValidationRegistryInteractor,
 };
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
@@ -34,8 +35,8 @@ async fn test_escrow_multi_job() {
         &owner_key,
         &owner_address.to_bech32("erd").to_string(),
     );
-    interactor.register_wallet(owner_wallet.clone()).await;
-    interactor.register_wallet(worker_wallet.clone()).await;
+    interactor.register_wallet(owner_wallet).await;
+    interactor.register_wallet(worker_wallet).await;
 
     fund_address_on_simulator(
         &owner_address.to_bech32("erd").to_string(),
@@ -45,7 +46,7 @@ async fn test_escrow_multi_job() {
     .await;
 
     // 2. Deploy
-    let mut identity =
+    let identity =
         IdentityRegistryInteractor::init(&mut interactor, owner_address.clone()).await;
     identity
         .issue_token(&mut interactor, "AgentToken", "AGENT")
@@ -54,7 +55,7 @@ async fn test_escrow_multi_job() {
         .register_agent(&mut interactor, "MultJobWorker", "uri://multijob", vec![])
         .await;
 
-    let mut validation = ValidationRegistryInteractor::init(
+    let validation = ValidationRegistryInteractor::init(
         &mut interactor,
         owner_address.clone(),
         identity.address(),
@@ -137,11 +138,13 @@ async fn test_escrow_multi_job() {
     escrow
         .deposit_egld_expect_err(
             &mut interactor,
-            jobs[1],
-            &worker_address,
-            "poa-dup",
-            9_999_999_999u64,
-            1_000_000_000_000_000_000,
+            EscrowDeposit {
+                job_id: jobs[1],
+                receiver: &worker_address,
+                poa_hash: "poa-dup",
+                deadline: 9_999_999_999u64,
+                amount_wei: 1_000_000_000_000_000_000,
+            },
             "Escrow already exists for this job",
         )
         .await;

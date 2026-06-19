@@ -6,10 +6,8 @@ use multiversx_sc::proxy_imports::*;
 use multiversx_sc::types::{Address, CodeMetadata, EgldOrEsdtTokenIdentifier, ManagedBuffer};
 use multiversx_sc_snippets::imports::*;
 
-pub mod interactors;
-pub use interactors::*;
-
 pub mod escrow_interactor;
+pub mod mpp_session_mvx_proxy;
 pub use escrow_interactor::*;
 
 pub const WASM_PATH: &str = "artifacts/identity-registry.wasm";
@@ -36,7 +34,6 @@ pub async fn get_simulator_chain_id(gateway_url: &str) -> String {
 /// Fund an address on the chain simulator using /simulator/set-state.
 /// This bypasses the initial wallet balance limits (typically ~10 EGLD).
 /// `balance_wei` should be the full balance in wei (e.g. "100000000000000000000000" for 100,000 EGLD).
-
 pub async fn fund_address_on_simulator(address_bech32: &str, balance_wei: &str, gateway_url: &str) {
     let client = reqwest::Client::new();
     let body = serde_json::json!([{
@@ -381,9 +378,9 @@ impl IdentityRegistryInteractor {
         uri: &str,
         metadata: Vec<(&str, Vec<u8>)>,
         services: Vec<ServiceConfigInput<StaticApi>>,
-        token_identifier: &str,
-        nonce: u64,
+        agent_token: (&str, u64),
     ) {
+        let (token_identifier, nonce) = agent_token;
         let name_buf: ManagedBuffer<StaticApi> = ManagedBuffer::new_from_bytes(name.as_bytes());
         let uri_buf: ManagedBuffer<StaticApi> = ManagedBuffer::new_from_bytes(uri.as_bytes());
         let pk_buf: ManagedBuffer<StaticApi> = ManagedBuffer::new_from_bytes(&[0u8; 32]);
@@ -910,7 +907,7 @@ pub async fn issue_fungible_esdt_custom(
         .await;
 
     println!("Issued ESDT {}...", ticker);
-    interactor.generate_blocks(15).await;
+    let _ = interactor.generate_blocks(15).await;
 
     // Fetch token ID via HTTP API
     let issuer_bech32 = address_to_bech32(issuer);
@@ -932,7 +929,7 @@ pub async fn issue_fungible_esdt_custom(
                 }
             }
         }
-        interactor.generate_blocks(1).await;
+        let _ = interactor.generate_blocks(1).await;
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
 

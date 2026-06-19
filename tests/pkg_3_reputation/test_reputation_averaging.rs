@@ -18,7 +18,7 @@ async fn test_reputation_averaging() {
     let employer = interactor.register_wallet(test_wallets::bob()).await;
 
     // 1. Deploy All Registries
-    let (mut identity, validation_addr, reputation_addr) =
+    let (identity, validation_addr, reputation_addr) =
         crate::common::deploy_all_registries(&mut interactor, owner.clone()).await;
 
     // Register Agent (Nonce 1)
@@ -30,13 +30,12 @@ async fn test_reputation_averaging() {
             vec![],
         )
         .await;
-    drop(identity);
 
     // 2. Complete 3 Jobs
     // Ratings: 80, 90, 60
     // Avg = floor((80 + 90 + 60) / 3) = 76
 
-    let ratings = vec![80u64, 90u64, 60u64];
+    let ratings = [80u64, 90u64, 60u64];
     let agent_nonce: u64 = 1;
 
     for (i, rating) in ratings.iter().enumerate() {
@@ -119,13 +118,12 @@ async fn test_max_rating() {
     let owner = interactor.register_wallet(test_wallets::alice()).await;
     let employer = interactor.register_wallet(test_wallets::bob()).await;
 
-    let (mut identity, validation_addr, reputation_addr) =
+    let (identity, validation_addr, reputation_addr) =
         crate::common::deploy_all_registries(&mut interactor, owner.clone()).await;
 
     identity
         .register_agent(&mut interactor, "MaxBot", "uri", vec![])
         .await;
-    drop(identity);
 
     let agent_nonce: u64 = 1;
     let job_id = "job-max";
@@ -195,20 +193,19 @@ async fn test_min_rating() {
     let owner = interactor.register_wallet(test_wallets::alice()).await;
     let employer = interactor.register_wallet(test_wallets::bob()).await;
 
-    let (mut identity, validation_addr, reputation_addr) =
+    let (identity, validation_addr, reputation_addr) =
         crate::common::deploy_all_registries(&mut interactor, owner.clone()).await;
 
     identity
         .register_agent(&mut interactor, "MinBot", "uri", vec![])
         .await;
-    drop(identity);
 
     let agent_nonce: u64 = 1;
 
     // Two jobs: first rating = 0, second rating = 100
     // Expected: after job-1 (rating=0): score = 0
     //           after job-2 (rating=100): score = (0*1 + 100) / 2 = 50
-    let ratings_and_jobs = vec![(0u64, "job-min-0"), (100u64, "job-min-1")];
+    let ratings_and_jobs = [(0u64, "job-min-0"), (100u64, "job-min-1")];
 
     for (rating, job_id) in &ratings_and_jobs {
         let job_id_buf = ManagedBuffer::<StaticApi>::new_from_bytes(job_id.as_bytes());

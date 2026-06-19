@@ -118,7 +118,7 @@ async fn test_relayed_v3_flow() {
         .spawn()
         .expect("Failed to start facilitator");
 
-    let _facilitator_guard = FacilitatorGuard { child };
+    let facilitator_guard = FacilitatorGuard { child };
 
     // Wait for facilitator to be ready
     let client = reqwest::Client::new();
@@ -284,4 +284,5 @@ async fn test_relayed_v3_flow() {
 
     // Cleanup
     let _ = std::fs::remove_dir_all(&relayer_wallets_dir);
+    drop(facilitator_guard);
 }

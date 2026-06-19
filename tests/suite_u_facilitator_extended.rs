@@ -12,41 +12,43 @@ use common::{
 
 const FACILITATOR_PORT: u16 = 3070;
 
-/// Helper to sign a transaction via moltbot-starter-kit/scripts/sign_tx.ts
-fn sign_tx(
-    sender_pk: &str,
-    receiver: &str,
-    value: &str,
+struct SignTxParams<'a> {
+    sender_pk: &'a str,
+    receiver: &'a str,
+    value: &'a str,
     nonce: u32,
     gas_limit: u64,
-    chain_id: &str,
+    chain_id: &'a str,
     valid_after: Option<u64>,
     valid_before: Option<u64>,
-) -> serde_json::Value {
+}
+
+/// Helper to sign a transaction via moltbot-starter-kit/scripts/sign_tx.ts
+fn sign_tx(params: &SignTxParams<'_>) -> serde_json::Value {
     let mut args = vec![
         "ts-node".to_string(),
         "../moltbot-starter-kit/scripts/sign_tx.ts".to_string(),
         "--sender-pk".to_string(),
-        sender_pk.to_string(),
+        params.sender_pk.to_string(),
         "--receiver".to_string(),
-        receiver.to_string(),
+        params.receiver.to_string(),
         "--value".to_string(),
-        value.to_string(),
+        params.value.to_string(),
         "--nonce".to_string(),
-        nonce.to_string(),
+        params.nonce.to_string(),
         "--gas-limit".to_string(),
-        gas_limit.to_string(),
+        params.gas_limit.to_string(),
         "--gas-price".to_string(),
         "1000000000".to_string(),
         "--chain-id".to_string(),
-        chain_id.to_string(),
+        params.chain_id.to_string(),
     ];
 
-    if let Some(va) = valid_after {
+    if let Some(va) = params.valid_after {
         args.push("--valid-after".to_string());
         args.push(va.to_string());
     }
-    if let Some(vb) = valid_before {
+    if let Some(vb) = params.valid_before {
         args.push("--valid-before".to_string());
         args.push(vb.to_string());
     }
@@ -89,11 +91,11 @@ async fn test_facilitator_extended() {
     // ── 2. Setup Wallets ──
     let sender_pk = generate_random_private_key();
     let sender_wallet = Wallet::from_private_key(&sender_pk).unwrap();
-    let sender_bech32 = sender_wallet.address().to_string();
+    let sender_bech32 = sender_wallet.to_address().to_bech32("erd").to_string();
 
     let receiver_pk = generate_random_private_key();
     let receiver_wallet = Wallet::from_private_key(&receiver_pk).unwrap();
-    let receiver_bech32 = receiver_wallet.address().to_string();
+    let receiver_bech32 = receiver_wallet.to_address().to_bech32("erd").to_string();
 
     fund_address_on_simulator(&sender_bech32, "1000000000000000000000", &gateway_url).await;
 
@@ -104,7 +106,7 @@ async fn test_facilitator_extended() {
 
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
     let alice_wallet = Wallet::from_pem_file(pem_path.to_str().unwrap()).expect("PEM load");
-    let alice_addr = interactor.register_wallet(alice_wallet.clone()).await;
+    let alice_addr = interactor.register_wallet(alice_wallet).await;
 
     let identity = IdentityRegistryInteractor::init(&mut interactor, alice_addr.clone()).await;
     identity
@@ -176,16 +178,16 @@ async fn test_facilitator_extended() {
 
     // ── Test 1: validBefore — Expired payload should be rejected ──
     println!("\n📋 Test 1: validBefore (expired)");
-    let expired_payload = sign_tx(
-        &sender_pk,
-        &receiver_bech32,
-        value_str,
-        0,
-        70000,
-        &chain_id,
-        None,
-        Some(1000), // validBefore = year 1970 — long expired
-    );
+    let expired_payload = sign_tx(&SignTxParams {
+        sender_pk: &sender_pk,
+        receiver: &receiver_bech32,
+        value: value_str,
+        nonce: 0,
+        gas_limit: 70000,
+        chain_id: &chain_id,
+        valid_after: None,
+        valid_before: Some(1000), // validBefore = year 1970 — long expired
+    });
 
     let mut payload = expired_payload;
     if payload.get("options").is_none() {
@@ -224,16 +226,16 @@ async fn test_facilitator_extended() {
 
     // ── Test 2: validAfter — Not-yet-valid payload should be rejected ──
     println!("\n📋 Test 2: validAfter (future)");
-    let future_payload = sign_tx(
-        &sender_pk,
-        &receiver_bech32,
-        value_str,
-        0,
-        70000,
-        &chain_id,
-        Some(9999999999), // validAfter = far future
-        None,
-    );
+    let future_payload = sign_tx(&SignTxParams {
+        sender_pk: &sender_pk,
+        receiver: &receiver_bech32,
+        value: value_str,
+        nonce: 0,
+        gas_limit: 70000,
+        chain_id: &chain_id,
+        valid_after: Some(9999999999), // validAfter = far future
+        valid_before: None,
+    });
 
     let mut payload = future_payload;
     if payload.get("options").is_none() {
@@ -265,16 +267,16 @@ async fn test_facilitator_extended() {
 
     // ── Test 3: Replay protection — Double settle same payload ──
     println!("\n📋 Test 3: Replay protection (double settle)");
-    let valid_payload = sign_tx(
-        &sender_pk,
-        &receiver_bech32,
-        value_str,
-        0,
-        70000,
-        &chain_id,
-        None,
-        None,
-    );
+    let valid_payload = sign_tx(&SignTxParams {
+        sender_pk: &sender_pk,
+        receiver: &receiver_bech32,
+        value: value_str,
+        nonce: 0,
+        gas_limit: 70000,
+        chain_id: &chain_id,
+        valid_after: None,
+        valid_before: None,
+    });
 
     let mut payload = valid_payload;
     if payload.get("options").is_none() {
@@ -325,16 +327,16 @@ async fn test_facilitator_extended() {
 
     // ── Test 4: Free-service — verify with amount=0 ──
     println!("\n📋 Test 4: Free-service (amount=0)");
-    let free_payload = sign_tx(
-        &sender_pk,
-        &receiver_bech32,
-        "0", // Free service
-        1,
-        70000,
-        &chain_id,
-        None,
-        None,
-    );
+    let free_payload = sign_tx(&SignTxParams {
+        sender_pk: &sender_pk,
+        receiver: &receiver_bech32,
+        value: "0", // Free service
+        nonce: 1,
+        gas_limit: 70000,
+        chain_id: &chain_id,
+        valid_after: None,
+        valid_before: None,
+    });
 
     let mut payload = free_payload;
     if payload.get("options").is_none() {

@@ -6,7 +6,7 @@ use std::process::Command;
 use tokio::time::{sleep, Duration};
 
 use crate::common::{
-    address_to_bech32, generate_random_private_key, get_simulator_chain_id,
+    generate_random_private_key, get_simulator_chain_id,
 };
 
 #[tokio::test]
@@ -49,11 +49,11 @@ async fn test_settle_egld() {
     // 1. Setup Sender (User) and Receiver
     let sender_pk_hex = generate_random_private_key();
     let sender_wallet = Wallet::from_private_key(&sender_pk_hex).unwrap();
-    let sender_bech32 = sender_wallet.address().to_string();
+    let sender_bech32 = sender_wallet.to_address().to_bech32("erd").to_string();
 
     let receiver_pk = generate_random_private_key();
     let receiver_wallet = Wallet::from_private_key(&receiver_pk).unwrap();
-    let receiver_bech32 = receiver_wallet.address().to_string();
+    let receiver_bech32 = receiver_wallet.to_address().to_bech32("erd").to_string();
 
     // Fund sender
     crate::common::fund_address_on_simulator(&sender_bech32, "1000000000000000000000", &gateway_url).await; // 1000 EGLD
@@ -108,8 +108,6 @@ async fn test_settle_egld() {
         serde_json::from_str(&signed_tx_json).expect("Failed to parse signed tx JSON");
 
     println!("Signed Tx: {}", signed_tx_json);
-
-    let signature = signed_tx["signature"].as_str().unwrap();
 
     // 3. Prepare Payload
     // Use the output from sign_tx.ts directly, ensuring data and options are correct

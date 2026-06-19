@@ -35,7 +35,7 @@ async fn test_service_configs() {
         &alice_private_key,
         &alice_address.to_bech32("erd").to_string(),
     );
-    interactor.register_wallet(alice_wallet.clone()).await;
+    interactor.register_wallet(alice_wallet).await;
 
     // Fund alice
     fund_address_on_simulator(
@@ -46,7 +46,7 @@ async fn test_service_configs() {
     .await;
 
     // 3. Deploy Contract
-    let mut identity_interactor =
+    let identity_interactor =
         IdentityRegistryInteractor::init(&mut interactor, alice_address.clone()).await;
 
     // 4. Issue Token
@@ -125,14 +125,7 @@ async fn test_service_configs() {
 
     // Use separate interactor for Bob to avoid borrowing conflicts
     let mut interactor_bob = Interactor::new(&gateway_url).await.use_chain_simulator(true);
-    interactor_bob.register_wallet(bob_wallet.clone()).await;
-
-    let contract_address = identity_interactor.contract_address.clone();
-
-    let mut bob_interactor = IdentityRegistryInteractor {
-        wallet_address: bob_address,
-        contract_address,
-    };
+    interactor_bob.register_wallet(bob_wallet).await;
 
     // Expect error
     // Note: Interactor doesn't catch panic easily in async test without specific expect_error wrapper or using tx().run() result check.

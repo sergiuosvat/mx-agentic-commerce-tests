@@ -1,7 +1,5 @@
-use base64::Engine as _;
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
-use serde_json::{json, Value};
 use std::process::Stdio;
 use tokio::time::{sleep, Duration};
 
@@ -189,7 +187,6 @@ async fn test_relayer_extended_operations() {
     println!("\n═══ TEST 3: Concurrent relayed registrations ═══");
 
     let mut handles = Vec::new();
-    let wallets_dir_clone = relayer_wallets_dir.clone();
 
     for i in 0..3 {
         let pk = generate_random_private_key();

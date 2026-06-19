@@ -24,13 +24,11 @@ async fn test_append_response() {
     identity
         .register_agent(&mut interactor, "WorkerBot", "uri", vec![])
         .await;
-    drop(identity);
 
     let job_id = "job-resp-1";
     let job_id_buf = ManagedBuffer::<StaticApi>::new_from_bytes(job_id.as_bytes());
     let agent_nonce: u64 = 1;
     let agent_nonce_buf = ManagedBuffer::<StaticApi>::new_from_bytes(&agent_nonce.to_be_bytes());
-    let employer_buf = ManagedBuffer::<StaticApi>::new_from_bytes(employer.as_bytes());
     let rating_buf = ManagedBuffer::<StaticApi>::new_from_bytes(&80u64.to_be_bytes());
     let proof = ManagedBuffer::<StaticApi>::new_from_bytes(b"proof");
 

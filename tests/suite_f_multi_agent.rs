@@ -2,7 +2,6 @@ use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
 use serde_json::{json, Value};
 use std::fs;
-use std::path::Path;
 use std::process::Stdio;
 use tokio::time::{sleep, Duration};
 
@@ -12,7 +11,6 @@ use common::{
     generate_random_private_key, IdentityRegistryInteractor,
 };
 
-const CHAIN_SIM_PORT: u16 = 8085;
 const FACILITATOR_PORT: u16 = 3005;
 const SIM_URL: &str = "http://localhost:8085";
 const FACILITATOR_URL: &str = "http://localhost:3005";
@@ -86,7 +84,7 @@ async fn test_multi_agent_payment_delegation() {
     let alice_pem_abs = fs::canonicalize(&alice_pem).expect("Failed to canonicalize alice pem");
 
     // 3. Deploy Registry & Register Bob
-    let mut registry = IdentityRegistryInteractor::init(&mut interactor, admin.clone()).await;
+    let registry = IdentityRegistryInteractor::init(&mut interactor, admin.clone()).await;
     let registry_addr = address_to_bech32(registry.address());
 
     let sim_url = SIM_URL;
@@ -204,7 +202,7 @@ async fn test_multi_agent_payment_delegation() {
         meta["sender"].as_str().unwrap() == alice_addr
     });
 
-    assert!(events_arr.len() > 0, "Should have events");
+    assert!(!events_arr.is_empty(), "Should have events");
     assert!(found, "Should find event from Alice");
 
     let event = &events_arr[0];

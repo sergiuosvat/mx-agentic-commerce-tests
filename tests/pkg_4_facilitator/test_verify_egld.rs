@@ -49,7 +49,7 @@ async fn test_verify_egld() {
 
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
     let sender = interactor.register_wallet(test_wallets::alice()).await;
-    let _receiver = interactor.register_wallet(test_wallets::bob()).await;
+    interactor.register_wallet(test_wallets::bob()).await;
 
     // Fund sender
     let sender_bech32 = address_to_bech32(&sender);

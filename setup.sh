@@ -1,5 +1,6 @@
 #!/bin/bash
 set -e
+set -o pipefail
 
 # ==============================================================================
 # Agentic Commerce Tests — Full Environment Setup
@@ -47,6 +48,7 @@ echo "▶ Checking / cloning dependencies..."
 
 # GitHub org for sibling repos
 GH_ORG="${GH_ORG:-sasurobert}"
+MPP_VERSION="${MPP_VERSION:-0.4.8}"
 
 clone_if_missing() {
     local name="$1"
@@ -69,6 +71,10 @@ clone_if_missing "mx-8004 (Smart Contracts)" \
     "$ROOT_DIR/mx-8004" \
     "https://github.com/${GH_ORG}/mx-8004.git"
 
+clone_if_missing "mpp-session-mvx (MPP Session)" \
+    "$ROOT_DIR/mpp-session-mvx" \
+    "https://github.com/${GH_ORG}/mpp-session-mvx.git"
+
 # MCP Server
 clone_if_missing "multiversx-mcp-server" \
     "$ROOT_DIR/multiversx-mcp-server" \
@@ -78,6 +84,11 @@ clone_if_missing "multiversx-mcp-server" \
 clone_if_missing "moltbot-starter-kit" \
     "$ROOT_DIR/moltbot-starter-kit" \
     "https://github.com/${GH_ORG}/moltbot-starter-kit.git"
+
+# MPP MultiversX SDK (file:../mppx-multiversx dep in multiversx-mcp-server)
+clone_if_missing "mppx-multiversx" \
+    "$ROOT_DIR/mppx-multiversx" \
+    "https://github.com/${GH_ORG}/mppx-multiversx.git"
 
 # x402 Integration directory
 mkdir -p "$ROOT_DIR/x402_integration"
@@ -168,7 +179,65 @@ for contract in identity-registry validation-registry reputation-registry; do
     [ -f "$MXSC_SRC" ] && [ ! -f "$MXSC_DST" ] && cp "$MXSC_SRC" "$MXSC_DST"
 done
 
+SESSION_MXSC="$ROOT_DIR/mpp-session-mvx/output/mpp-session-mvx.mxsc.json"
+if [ -f "$SESSION_MXSC" ]; then
+    ok "mpp-session-mvx.mxsc.json ($(wc -c < "$SESSION_MXSC" | tr -d ' ') bytes)"
+elif command -v sc-meta >/dev/null 2>&1 && [ -d "$ROOT_DIR/mpp-session-mvx" ]; then
+    info "Building mpp-session-mvx contract..."
+    (cd "$ROOT_DIR/mpp-session-mvx" && sc-meta all build)
+    [ -f "$SESSION_MXSC" ] || fail "mpp-session-mvx build did not produce $SESSION_MXSC"
+    ok "mpp-session-mvx built"
+else
+    fail "mpp-session-mvx artifact missing at $SESSION_MXSC (clone repo or install sc-meta)"
+fi
+
+MPP_PROXY_SRC="$ROOT_DIR/mpp-session-mvx/interactor/src/mpp_session_mvx_proxy.rs"
+MPP_PROXY_DST="$SCRIPT_DIR/tests/common/mpp_session_mvx_proxy.rs"
+if [ -d "$ROOT_DIR/mpp-session-mvx/meta" ]; then
+    info "Generating mpp-session-mvx proxy for tests..."
+    (cd "$ROOT_DIR/mpp-session-mvx/meta" && cargo run --quiet -- proxy)
+    [ -f "$MPP_PROXY_SRC" ] || fail "Proxy generation did not produce $MPP_PROXY_SRC"
+    cp "$MPP_PROXY_SRC" "$MPP_PROXY_DST"
+    ok "mpp_session_mvx_proxy.rs -> tests/common/"
+else
+    fail "mpp-session-mvx/meta not found — cannot generate test proxy"
+fi
+
 # ── 5. Node.js Services ─────────────────────────────────────────────────────
+
+echo ""
+echo "▶ Building MPP packages..."
+
+ensure_mppx_ready() {
+    local mppx_dir="$ROOT_DIR/mppx"
+
+    if [ -f "$mppx_dir/dist/server/index.js" ] \
+        && grep -q "\"version\": \"${MPP_VERSION}\"" "$mppx_dir/package.json" 2>/dev/null; then
+        ok "mppx@${MPP_VERSION} ready"
+        return
+    fi
+
+    info "Installing mppx@${MPP_VERSION} from npm..."
+    local staging
+    staging=$(mktemp -d)
+    (cd "$staging" && npm pack "mppx@${MPP_VERSION}" --silent)
+    rm -rf "$mppx_dir"
+    mkdir -p "$mppx_dir"
+    tar -xzf "$staging"/mppx-*.tgz -C "$staging"
+    cp -a "$staging/package/." "$mppx_dir/"
+    rm -rf "$staging"
+    ok "mppx@${MPP_VERSION} installed"
+}
+
+ensure_mppx_ready
+
+if [ -d "$ROOT_DIR/mppx-multiversx" ]; then
+    info "Building mppx-multiversx..."
+    (cd "$ROOT_DIR/mppx-multiversx" && npm install --silent && npm run build --silent)
+    ok "mppx-multiversx built"
+else
+    warn "mppx-multiversx not found — multiversx-mcp-server build may fail"
+fi
 
 echo ""
 echo "▶ Building Node.js services..."
@@ -196,7 +265,7 @@ build_node_service "x402-facilitator"       "$ROOT_DIR/x402_integration/x402_fac
 
 echo ""
 echo "▶ Building Rust test suite..."
-(cd "$SCRIPT_DIR" && cargo build --tests 2>&1 | tail -3)
+(cd "$SCRIPT_DIR" && cargo build --tests)
 ok "Rust tests compiled"
 
 # ── Summary ──────────────────────────────────────────────────────────────────
@@ -214,4 +283,7 @@ echo "  cargo test --test suite_a_identity -- --nocapture"
 echo ""
 echo "Override GitHub org (for forks):"
 echo "  GH_ORG=youruser ./setup.sh"
+echo ""
+echo "Override MPP core version (default 0.4.8):"
+echo "  MPP_VERSION=0.4.12 ./setup.sh"
 echo ""

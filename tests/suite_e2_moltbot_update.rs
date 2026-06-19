@@ -37,7 +37,7 @@ async fn test_moltbot_update_manifest() {
     println!("Simulator ChainID: {}", chain_id);
 
     // 2. Deploy Identity Registry + Issue Token
-    let mut registry = IdentityRegistryInteractor::init(&mut interactor, alice.clone()).await;
+    let registry = IdentityRegistryInteractor::init(&mut interactor, alice.clone()).await;
     let registry_address = address_to_bech32(registry.address());
     println!("Registry Address: {}", registry_address);
 
@@ -50,7 +50,7 @@ async fn test_moltbot_update_manifest() {
     // 3. Setup Moltbot Wallet (FUNDED)
     let moltbot_pk = generate_random_private_key();
     let moltbot_wallet_obj = Wallet::from_private_key(&moltbot_pk).unwrap();
-    let moltbot_address = interactor.register_wallet(moltbot_wallet_obj.clone()).await;
+    let moltbot_address = interactor.register_wallet(moltbot_wallet_obj).await;
     let moltbot_address_bech32 = address_to_bech32(&moltbot_address);
 
     println!("Funding Moltbot: {}", moltbot_address_bech32);
@@ -142,7 +142,7 @@ async fn test_moltbot_update_manifest() {
         .expect("returnData not found");
     let has_agent = return_data
         .iter()
-        .any(|v| v.as_str().map_or(false, |s| !s.is_empty()));
+        .any(|v| v.as_str().is_some_and(|s| !s.is_empty()));
     assert!(
         has_agent,
         "Agent should be registered. returnData: {:?}",

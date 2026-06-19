@@ -7,6 +7,7 @@ use std::sync::atomic::{AtomicU16, Ordering};
 
 static NEXT_PORT: AtomicU16 = AtomicU16::new(8085);
 
+#[derive(Default)]
 pub struct ProcessManager {
     children: Vec<Child>,
     simulator_ports: Vec<u16>,
@@ -14,10 +15,7 @@ pub struct ProcessManager {
 
 impl ProcessManager {
     pub fn new() -> Self {
-        Self {
-            children: Vec::new(),
-            simulator_ports: Vec::new(),
-        }
+        Self::default()
     }
 
     pub fn start_chain_simulator(&mut self) -> Result<u16, std::io::Error> {
@@ -38,12 +36,10 @@ impl ProcessManager {
                 let local_bin = cwd.join("mx-chain-simulator-go");
                 if local_bin.exists() {
                     cmd_name = local_bin.to_string_lossy().to_string();
-                } else {
-                    if let Ok(home) = std::env::var("HOME") {
-                        let go_bin = PathBuf::from(home).join("go/bin/mx-chain-simulator-go");
-                        if go_bin.exists() {
-                            cmd_name = go_bin.to_string_lossy().to_string();
-                        }
+                } else if let Ok(home) = std::env::var("HOME") {
+                    let go_bin = PathBuf::from(home).join("go/bin/mx-chain-simulator-go");
+                    if go_bin.exists() {
+                        cmd_name = go_bin.to_string_lossy().to_string();
                     }
                 }
             }
@@ -65,9 +61,8 @@ impl ProcessManager {
             .stdout(Stdio::inherit()) 
             .stderr(Stdio::inherit())
             .spawn()
-            .map_err(|e| {
+            .inspect_err(|_| {
                 println!("Failed to start chain simulator. Ensure 'mx-chain-simulator-go' is in PATH or ~/go/bin.");
-                e
             })?;
 
         self.children.push(child);

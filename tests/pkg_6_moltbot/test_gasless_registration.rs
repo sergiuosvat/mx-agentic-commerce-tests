@@ -38,7 +38,6 @@ async fn test_gasless_registration() {
     interactor.generate_blocks_until_all_activations().await;
 
     let owner = interactor.register_wallet(test_wallets::alice()).await;
-    let owner_bech32 = address_to_bech32(&owner);
 
     // 1. Deploy registries
     let (identity, validation_addr, reputation_addr) =
@@ -126,6 +125,7 @@ async fn test_gasless_registration() {
     } else {
         println!("⚠️ Facilitator not responding, skipping gasless test");
         let _ = facilitator_child.kill();
+        let _ = facilitator_child.wait();
         let _ = std::fs::remove_dir_all(&relayer_dir);
         let _ = std::fs::remove_file(&bot_pem_path);
         return;

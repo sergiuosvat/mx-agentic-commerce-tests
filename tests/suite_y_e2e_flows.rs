@@ -36,22 +36,20 @@ async fn test_e2e_flows() {
     fund_address_on_simulator(alice_bech32, "100000000000000000000000", &gateway_url).await;
 
     let alice_wallet = Wallet::from_pem_file(pem_path.to_str().unwrap()).expect("PEM load");
-    let alice_addr = interactor.register_wallet(alice_wallet.clone()).await;
+    let alice_addr = interactor.register_wallet(alice_wallet).await;
 
     // ── 3. Deploy All Registries ──
-    let (identity, validation_addr, reputation_addr) =
+    let (identity, ..) =
         common::deploy_all_registries(&mut interactor, alice_addr.clone()).await;
 
     let identity_bech32 = address_to_bech32(identity.address());
-    let validation_bech32 = address_to_bech32(&validation_addr);
-    let reputation_bech32 = address_to_bech32(&reputation_addr);
 
     generate_blocks_on_simulator(20, &gateway_url).await;
 
     // ── 4. Register Agent A (the provider) ──
     let agent_a_pk = generate_random_private_key();
     let agent_a_wallet = Wallet::from_private_key(&agent_a_pk).unwrap();
-    let agent_a_addr = interactor.register_wallet(agent_a_wallet.clone()).await;
+    let agent_a_addr = interactor.register_wallet(agent_a_wallet).await;
     let agent_a_bech32 = address_to_bech32(&agent_a_addr);
     fund_address_on_simulator(&agent_a_bech32, "10000000000000000000", &gateway_url).await;
 
@@ -157,7 +155,7 @@ async fn test_e2e_flows() {
 
     let buyer_pk = generate_random_private_key();
     let buyer_wallet = Wallet::from_private_key(&buyer_pk).unwrap();
-    let buyer_addr = interactor.register_wallet(buyer_wallet.clone()).await;
+    let buyer_addr = interactor.register_wallet(buyer_wallet).await;
     let buyer_bech32 = address_to_bech32(&buyer_addr);
     fund_address_on_simulator(&buyer_bech32, "10000000000000000000", &gateway_url).await;
     generate_blocks_on_simulator(5, &gateway_url).await;
@@ -260,7 +258,7 @@ async fn test_e2e_flows() {
     // Create unfunded wallet
     let bot_pk = generate_random_private_key();
     let bot_wallet = Wallet::from_private_key(&bot_pk).unwrap();
-    let bot_addr = interactor.register_wallet(bot_wallet.clone()).await;
+    let bot_addr = interactor.register_wallet(bot_wallet).await;
     let bot_bech32 = address_to_bech32(&bot_addr);
     // NOTE: NOT funding this wallet — testing gasless flow
 
@@ -276,7 +274,7 @@ async fn test_e2e_flows() {
     for i in 0..5 {
         let rk = generate_random_private_key();
         let rw = Wallet::from_private_key(&rk).unwrap();
-        let rw_addr = interactor.register_wallet(rw.clone()).await;
+        let rw_addr = interactor.register_wallet(rw).await;
         let rb = address_to_bech32(&rw_addr);
         fund_address_on_simulator(&rb, "5000000000000000000", &gateway_url).await;
 
@@ -366,7 +364,7 @@ async fn test_e2e_flows() {
 
     let employer_pk = generate_random_private_key();
     let employer_wallet = Wallet::from_private_key(&employer_pk).unwrap();
-    let employer_addr = interactor.register_wallet(employer_wallet.clone()).await;
+    let employer_addr = interactor.register_wallet(employer_wallet).await;
     let employer_bech32 = address_to_bech32(&employer_addr);
     fund_address_on_simulator(&employer_bech32, "10000000000000000000", &gateway_url).await;
     generate_blocks_on_simulator(5, &gateway_url).await;

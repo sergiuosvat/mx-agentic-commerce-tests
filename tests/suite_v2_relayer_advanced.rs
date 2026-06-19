@@ -36,9 +36,9 @@ async fn test_relayer_advanced() {
     fund_address_on_simulator(alice_bech32, "100000000000000000000000", &gateway_url).await;
 
     let alice_wallet = Wallet::from_pem_file(pem_path.to_str().unwrap()).expect("PEM load");
-    let alice_addr = interactor.register_wallet(alice_wallet.clone()).await;
+    let alice_addr = interactor.register_wallet(alice_wallet).await;
 
-    let (identity, _validation_addr, _reputation_addr) =
+    let (identity, ..) =
         common::deploy_all_registries(&mut interactor, alice_addr.clone()).await;
 
     let identity_bech32 = address_to_bech32(identity.address());

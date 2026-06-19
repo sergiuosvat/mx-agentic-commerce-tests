@@ -1,9 +1,8 @@
 use crate::common::{
-    create_pem_file, fund_address_on_simulator, generate_random_private_key,
-    get_simulator_chain_id, IdentityRegistryInteractor, MetadataEntry, ServiceConfigInput,
+    create_pem_file, fund_address_on_simulator, generate_random_private_key, IdentityRegistryInteractor,
 };
 use identity_registry_interactor::identity_registry_proxy::IdentityRegistryProxy;
-use multiversx_sc::types::{BigUint, ManagedAddress, ManagedBuffer, TokenIdentifier};
+use multiversx_sc::types::{ManagedAddress, ManagedBuffer, TokenIdentifier};
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
 use tokio::time::{sleep, Duration};
@@ -28,12 +27,12 @@ async fn test_update_agent_full() {
         &alice_address.to_bech32("erd").to_string(),
     );
 
-    interactor.register_wallet(alice_wallet.clone()).await;
+    interactor.register_wallet(alice_wallet).await;
     let wallet_bech32 = alice_address.to_bech32("erd").to_string();
     fund_address_on_simulator(&wallet_bech32, "100000000000000000000000", &gateway_url).await;
 
     // Deploy & Issue & Register
-    let mut identity_interactor =
+    let identity_interactor =
         IdentityRegistryInteractor::init(&mut interactor, alice_address.clone()).await;
     identity_interactor
         .issue_token(&mut interactor, "AgentToken", "AGENT")
@@ -63,8 +62,7 @@ async fn test_update_agent_full() {
             "uri2",
             vec![],
             vec![],
-            &token_str,
-            1u64, // Nonce 1
+            (&token_str, 1u64),
         )
         .await;
 
@@ -103,7 +101,7 @@ async fn test_update_agent_metadata() {
         &alice_address.to_bech32("erd").to_string(),
     );
 
-    interactor.register_wallet(alice_wallet.clone()).await;
+    interactor.register_wallet(alice_wallet).await;
     let wallet_bech32 = alice_address.to_bech32("erd").to_string();
     crate::common::fund_address_on_simulator(
         &wallet_bech32,
@@ -112,7 +110,7 @@ async fn test_update_agent_metadata() {
     )
     .await;
 
-    let mut identity_interactor =
+    let identity_interactor =
         IdentityRegistryInteractor::init(&mut interactor, alice_address.clone()).await;
     identity_interactor
         .issue_token(&mut interactor, "AgentToken", "AGENT")
@@ -147,8 +145,7 @@ async fn test_update_agent_metadata() {
             "uri",
             new_metadata,
             vec![],
-            &token_id.to_string(),
-            1,
+            (&token_id.to_string(), 1),
         )
         .await;
 

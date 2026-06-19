@@ -114,7 +114,7 @@ async fn test_mcp_agent_discovery() {
         .await;
 
     // Deploy and register Agent #1 (Alice)
-    let mut identity =
+    let identity =
         IdentityRegistryInteractor::init(&mut interactor, wallet_alice.clone()).await;
     identity
         .issue_token(&mut interactor, "AgentToken", "AGENT")
@@ -133,9 +133,6 @@ async fn test_mcp_agent_discovery() {
         .await;
 
     let registry_addr = identity.address().clone();
-
-    // Drop identity to release the interactor borrow
-    drop(identity);
 
     // Register Agent #2 from Bob's wallet
     let name_buf: ManagedBuffer<StaticApi> = ManagedBuffer::new_from_bytes(b"BetaBot");
@@ -176,7 +173,6 @@ async fn test_mcp_agent_discovery() {
 
     println!("Registered Agent #2 (BetaBot) from Bob's wallet");
 
-    let chain_id = common::get_simulator_chain_id(&gateway_url).await;
     let registry_address = common::address_to_bech32(&registry_addr);
     println!("Registry Address: {}", registry_address);
 
@@ -204,7 +200,7 @@ async fn test_mcp_agent_discovery() {
     let query_json: Value = query_resp.json().await.unwrap();
     let return_data = &query_json["data"]["data"]["returnData"];
     assert!(
-        return_data.is_array() && return_data.as_array().unwrap().len() > 0,
+        return_data.is_array() && !return_data.as_array().unwrap().is_empty(),
         "Agent #1 should have return data"
     );
     println!("Agent #1 VM query return data: {:?}", return_data);
@@ -226,7 +222,7 @@ async fn test_mcp_agent_discovery() {
     let query_json2: Value = query_resp2.json().await.unwrap();
     let return_data2 = &query_json2["data"]["data"]["returnData"];
     assert!(
-        return_data2.is_array() && return_data2.as_array().unwrap().len() > 0,
+        return_data2.is_array() && !return_data2.as_array().unwrap().is_empty(),
         "Agent #2 should have return data"
     );
     println!("Agent #2 VM query return data: {:?}", return_data2);

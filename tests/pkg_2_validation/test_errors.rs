@@ -19,7 +19,7 @@ async fn setup_env() -> (ProcessManager, Interactor, Address, Address, Address, 
     let owner = interactor.register_wallet(test_wallets::alice()).await;
     fund_address_on_simulator(&address_to_bech32(&owner), "100000000000000000000", &gateway_url).await;
 
-    let (mut identity, validation_addr, _) =
+    let (identity, validation_addr, ..) =
         deploy_all_registries(&mut interactor, owner.clone()).await;
 
     let service = ServiceConfigInput::<StaticApi> {
@@ -45,7 +45,8 @@ async fn setup_env() -> (ProcessManager, Interactor, Address, Address, Address, 
 #[tokio::test]
 #[should_panic(expected = "Insufficient payment")]
 async fn test_init_job_insufficient_payment() {
-    let (_pm, mut interactor, validation_addr, _, _, gateway_url) = setup_env().await;
+    let (pm, mut interactor, validation_addr, _, _, gateway_url) = setup_env().await;
+    std::mem::forget(pm);
     let employer = interactor.register_wallet(test_wallets::bob()).await;
     fund_address_on_simulator(&address_to_bech32(&employer), "100000000000000000000", &gateway_url).await;
 
@@ -66,7 +67,8 @@ async fn test_init_job_insufficient_payment() {
 #[tokio::test]
 #[should_panic(expected = "Job already initialized")]
 async fn test_init_job_duplicate_id() {
-    let (_pm, mut interactor, validation_addr, _, _, gateway_url) = setup_env().await;
+    let (pm, mut interactor, validation_addr, _, _, gateway_url) = setup_env().await;
+    std::mem::forget(pm);
     let employer = interactor.register_wallet(test_wallets::bob()).await;
     fund_address_on_simulator(&address_to_bech32(&employer), "100000000000000000000", &gateway_url).await;
 

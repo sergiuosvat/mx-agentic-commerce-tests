@@ -46,7 +46,7 @@ async fn test_relayed_moltbot_full_lifecycle() {
     println!("Admin topped up with 100,000 EGLD");
 
     // 2. Deploy & Setup
-    let mut registry = IdentityRegistryInteractor::init(&mut interactor, admin.clone()).await;
+    let registry = IdentityRegistryInteractor::init(&mut interactor, admin.clone()).await;
     let registry_addr = address_to_bech32(registry.address());
 
     registry

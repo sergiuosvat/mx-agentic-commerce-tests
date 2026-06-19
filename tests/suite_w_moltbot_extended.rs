@@ -10,7 +10,6 @@ use common::{
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
 
-const MOLTBOT_PORT: u16 = 3090;
 const FACILITATOR_PORT: u16 = 3091;
 
 /// Suite W: Moltbot Lifecycle Extended Coverage
@@ -41,15 +40,13 @@ async fn test_moltbot_lifecycle_extended() {
     fund_address_on_simulator(alice_bech32, "100000000000000000000000", &gateway_url).await;
 
     let alice_wallet = Wallet::from_pem_file(pem_path.to_str().unwrap()).expect("PEM load");
-    let alice_addr = interactor.register_wallet(alice_wallet.clone()).await;
+    let alice_addr = interactor.register_wallet(alice_wallet).await;
 
     // ── 3. Deploy All Registries ──
-    let (identity, validation_addr, reputation_addr) =
+    let (identity, ..) =
         common::deploy_all_registries(&mut interactor, alice_addr.clone()).await;
 
     let identity_bech32 = common::address_to_bech32(identity.address());
-    let validation_bech32 = common::address_to_bech32(&validation_addr);
-    let reputation_bech32 = common::address_to_bech32(&reputation_addr);
 
     generate_blocks_on_simulator(20, &gateway_url).await;
 
@@ -100,7 +97,7 @@ async fn test_moltbot_lifecycle_extended() {
     // Create a temp PEM for the moltbot agent
     let agent_pk = generate_random_private_key();
     let agent_wallet = Wallet::from_private_key(&agent_pk).unwrap();
-    let agent_addr = interactor.register_wallet(agent_wallet.clone()).await;
+    let agent_addr = interactor.register_wallet(agent_wallet).await;
     let agent_bech32 = common::address_to_bech32(&agent_addr);
     fund_address_on_simulator(&agent_bech32, "10000000000000000000", &gateway_url).await;
     generate_blocks_on_simulator(5, &gateway_url).await;
@@ -246,7 +243,7 @@ async fn test_moltbot_lifecycle_extended() {
     // Generate a new key and re-register under new identity
     let new_pk = generate_random_private_key();
     let new_wallet = Wallet::from_private_key(&new_pk).unwrap();
-    let new_bech32 = new_wallet.address().to_string();
+    let new_bech32 = new_wallet.to_address().to_bech32("erd").to_string();
     fund_address_on_simulator(&new_bech32, "10000000000000000000", &gateway_url).await;
     generate_blocks_on_simulator(5, &gateway_url).await;
 

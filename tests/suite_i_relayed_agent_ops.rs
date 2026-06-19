@@ -86,7 +86,7 @@ async fn test_relayed_agent_operations() {
     // ────────────────────────────────────────────
     let registry_addr_bech32;
     {
-        let mut registry = IdentityRegistryInteractor::init(&mut interactor, admin.clone()).await;
+        let registry = IdentityRegistryInteractor::init(&mut interactor, admin.clone()).await;
         registry_addr_bech32 = address_to_bech32(registry.address());
         println!("Registry: {}", registry_addr_bech32);
 
@@ -222,7 +222,7 @@ async fn test_relayed_agent_operations() {
     // returnData should have a non-empty entry (the agent's NFT nonce as base64)
     let has_agent = return_data
         .iter()
-        .any(|v| v.as_str().map_or(false, |s| !s.is_empty()));
+        .any(|v| v.as_str().is_some_and(|s| !s.is_empty()));
     assert!(
         has_agent,
         "Agent should have a non-zero ID after registration. returnData: {:?}",

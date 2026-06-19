@@ -1,4 +1,3 @@
-use multiversx_sc_snippets::imports::*;
 
 #[path = "common/mod.rs"]
 mod common;
@@ -16,6 +15,7 @@ pub mod test_registration;
 // #[path = "pkg_1_identity/test_metadata_ops.rs"]
 // pub mod test_metadata_ops;
 #[path = "pkg_1_identity/test_service_configs.rs"]
+pub mod test_service_configs;
 #[path = "pkg_1_identity/test_views.rs"]
 pub mod test_views;
 // #[path = "pkg_1_identity/test_views.rs"]

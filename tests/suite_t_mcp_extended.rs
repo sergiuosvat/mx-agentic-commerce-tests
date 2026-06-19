@@ -134,7 +134,7 @@ async fn test_mcp_extended_tool_coverage() {
     // Registry tools need deployed identity/validation/reputation contracts
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
     let alice_wallet = Wallet::from_pem_file(pem_path.to_str().unwrap()).expect("PEM load");
-    let alice_addr = interactor.register_wallet(alice_wallet.clone()).await;
+    let alice_addr = interactor.register_wallet(alice_wallet).await;
 
     // Fund the actual PEM wallet address (may differ from well-known alice)
     let alice_bech32 = common::address_to_bech32(&alice_addr);

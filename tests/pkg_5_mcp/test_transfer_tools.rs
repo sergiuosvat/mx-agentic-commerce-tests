@@ -109,7 +109,7 @@ async fn test_transfer_tools() {
                 }
             }
         }
-        interactor.generate_blocks(1).await;
+        let _ = interactor.generate_blocks(1).await;
         sleep(Duration::from_millis(500)).await;
     }
     assert!(balance_found, "Bob should have 1 EGLD");
@@ -152,7 +152,7 @@ async fn test_transfer_tools() {
     let alice_esdt_url = format!("{}/address/{}/esdt", gateway_url, alice_bech32);
 
     for i in 0..20 {
-        interactor.generate_blocks(1).await;
+        let _ = interactor.generate_blocks(1).await;
         sleep(Duration::from_millis(500)).await;
 
         let resp_esdt = client_http.get(&alice_esdt_url).send().await;
@@ -218,7 +218,7 @@ async fn test_transfer_tools() {
                 }
             }
         }
-        interactor.generate_blocks(1).await;
+        let _ = interactor.generate_blocks(1).await;
         sleep(Duration::from_millis(500)).await;
     }
     assert!(token_found, "Bob should have 100 tokens");
@@ -250,7 +250,7 @@ async fn test_transfer_tools() {
 
     // Wait for it to finalize
     for _ in 0..5 {
-        interactor.generate_blocks(1).await;
+        let _ = interactor.generate_blocks(1).await;
         sleep(Duration::from_millis(300)).await;
     }
 
@@ -300,7 +300,7 @@ async fn test_transfer_tools() {
     // Wait for NFT collection to appear
     let mut nft_collection_id = String::new();
     for i in 0..20 {
-        interactor.generate_blocks(1).await;
+        let _ = interactor.generate_blocks(1).await;
         sleep(Duration::from_millis(500)).await;
 
         // Check Alice's tokens for the new collection
@@ -330,7 +330,7 @@ async fn test_transfer_tools() {
     if nft_collection_id.is_empty() {
         // Fallback: Check ESDTs endpoint
         let resp_esdt = client_http
-            .get(&format!("{}/address/{}/esdt", gateway_url, alice_bech32))
+            .get(format!("{}/address/{}/esdt", gateway_url, alice_bech32))
             .send()
             .await;
         if let Ok(r) = resp_esdt {
@@ -420,7 +420,7 @@ async fn test_transfer_tools() {
     println!("Setting ESDTRoleNFTCreate for Alice...");
 
     // Register Alice wallet with interactor for direct tx
-    let alice_interactor_addr = interactor.register_wallet(alice_wallet.clone()).await;
+    let alice_interactor_addr = interactor.register_wallet(alice_wallet).await;
     let system_sc = Bech32Address::from_bech32_string(
         "erd1qqqqqqqqqqqqqqqpqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqzllls8a5w6u".to_string(),
     );
@@ -443,7 +443,7 @@ async fn test_transfer_tools() {
 
     // Generate blocks to process
     for _ in 0..5 {
-        interactor.generate_blocks(1).await;
+        let _ = interactor.generate_blocks(1).await;
         sleep(Duration::from_millis(300)).await;
     }
     println!("ESDTRoleNFTCreate set");
@@ -476,7 +476,7 @@ async fn test_transfer_tools() {
     // Verify NFT appears on Alice's account
     let mut nft_found = false;
     for _ in 0..15 {
-        interactor.generate_blocks(1).await;
+        let _ = interactor.generate_blocks(1).await;
         sleep(Duration::from_millis(500)).await;
 
         let resp_esdt = client_http

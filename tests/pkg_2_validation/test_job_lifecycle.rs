@@ -30,7 +30,7 @@ async fn test_job_lifecycle() {
         &owner_private_key,
         &owner_address.to_bech32("erd").to_string(),
     );
-    interactor.register_wallet(owner_wallet.clone()).await;
+    interactor.register_wallet(owner_wallet).await;
 
     fund_address_on_simulator(
         &owner_address.to_bech32("erd").to_string(),
@@ -40,7 +40,7 @@ async fn test_job_lifecycle() {
     .await;
 
     // 2. Deploy Identity Registry & Issue Token
-    let mut identity_interactor =
+    let identity_interactor =
         IdentityRegistryInteractor::init(&mut interactor, owner_address.clone()).await;
     identity_interactor
         .issue_token(&mut interactor, "AgentToken", "AGENT")
@@ -54,7 +54,7 @@ async fn test_job_lifecycle() {
     let agent_nonce = 1;
 
     // 4. Deploy Validation Registry
-    let mut validation_interactor = ValidationRegistryInteractor::init(
+    let validation_interactor = ValidationRegistryInteractor::init(
         &mut interactor,
         owner_address.clone(),
         identity_interactor.address(),

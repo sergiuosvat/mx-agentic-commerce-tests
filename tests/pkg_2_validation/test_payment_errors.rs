@@ -45,7 +45,7 @@ async fn setup_payment_env() -> (
         &owner_pk,
         &owner.to_bech32("erd").to_string(),
     );
-    interactor.register_wallet(owner_wallet.clone()).await;
+    interactor.register_wallet(owner_wallet).await;
     fund_address_on_simulator(
         &owner.to_bech32("erd").to_string(),
         "100000000000000000000000",
@@ -65,7 +65,7 @@ async fn setup_payment_env() -> (
     .await;
 
     // Deploy identity + issue token
-    let mut identity = IdentityRegistryInteractor::init(&mut interactor, owner.clone()).await;
+    let identity = IdentityRegistryInteractor::init(&mut interactor, owner.clone()).await;
     identity
         .issue_token(&mut interactor, "AgentToken", "AGENT")
         .await;
@@ -109,12 +109,12 @@ async fn setup_payment_env() -> (
 #[tokio::test]
 async fn test_init_job_wrong_token() {
     let (
-        _pm,
+        pm,
         mut interactor,
         validation,
-        _identity,
+        _,
         owner,
-        _employer_wallet,
+        _,
         agent_nonce,
         gateway_url,
     ) = setup_payment_env().await;
@@ -149,6 +149,8 @@ async fn test_init_job_wrong_token() {
         .returns(ExpectError(4, "Invalid payment token"))
         .run()
         .await;
+
+    drop(pm);
 }
 
 // ── Test: Insufficient amount → ERR_INSUFFICIENT_PAYMENT ─────────────
@@ -157,11 +159,11 @@ async fn test_init_job_wrong_token() {
 #[tokio::test]
 async fn test_init_job_insufficient_payment() {
     let (
-        _pm,
-        mut interactor,
+        pm,
+        _,
         validation,
-        _identity,
-        _owner,
+        _,
+        _,
         employer_wallet,
         agent_nonce,
         gateway_url,
@@ -172,7 +174,7 @@ async fn test_init_job_insufficient_payment() {
         .await
         .use_chain_simulator(true);
     interactor_employer
-        .register_wallet(employer_wallet.clone())
+        .register_wallet(employer_wallet)
         .await;
 
     let job_id_buf = ManagedBuffer::<StaticApi>::new_from_bytes(b"low-pay-job");
@@ -190,6 +192,8 @@ async fn test_init_job_insufficient_payment() {
         .returns(ExpectError(4, "Insufficient payment"))
         .run()
         .await;
+
+    drop(pm);
 }
 
 // ── Test: init_job WITHOUT service_id → no payment required ──────────
@@ -199,11 +203,11 @@ async fn test_init_job_insufficient_payment() {
 #[tokio::test]
 async fn test_init_job_no_service_id() {
     let (
-        _pm,
-        _interactor,
+        pm,
+        _,
         validation,
-        _identity,
-        _owner,
+        _,
+        _,
         employer_wallet,
         agent_nonce,
         gateway_url,
@@ -230,4 +234,6 @@ async fn test_init_job_no_service_id() {
         .await;
 
     println!("No-service-id init_job succeeded as expected");
+
+    drop(pm);
 }

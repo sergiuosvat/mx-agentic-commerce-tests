@@ -40,7 +40,6 @@ async fn test_cascading_escrow_chain() {
     identity
         .register_agent(&mut interactor, "AlphaAgent", "https://alpha.ai", vec![])
         .await;
-    let _agent_a_nonce: u64 = 1;
 
     let name_b = ManagedBuffer::<StaticApi>::new_from_bytes(b"BetaAgent");
     let uri_b = ManagedBuffer::<StaticApi>::new_from_bytes(b"https://beta.ai");

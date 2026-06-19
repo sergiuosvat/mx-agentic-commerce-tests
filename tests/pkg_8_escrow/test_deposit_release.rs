@@ -2,7 +2,6 @@ use crate::common::{
     create_pem_file, fund_address_on_simulator, generate_random_private_key,
     EscrowInteractor, EscrowStatus, IdentityRegistryInteractor, ValidationRegistryInteractor,
 };
-use multiversx_sc::types::ManagedBuffer;
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
 use tokio::time::{sleep, Duration};
@@ -35,8 +34,8 @@ async fn test_escrow_deposit_and_release() {
         &owner_key,
         &owner_address.to_bech32("erd").to_string(),
     );
-    interactor.register_wallet(owner_wallet.clone()).await;
-    interactor.register_wallet(worker_wallet.clone()).await;
+    interactor.register_wallet(owner_wallet).await;
+    interactor.register_wallet(worker_wallet).await;
 
     fund_address_on_simulator(
         &owner_address.to_bech32("erd").to_string(),
@@ -46,7 +45,7 @@ async fn test_escrow_deposit_and_release() {
     .await;
 
     // 2. Deploy all 3 contracts
-    let mut identity =
+    let identity =
         IdentityRegistryInteractor::init(&mut interactor, owner_address.clone()).await;
     identity
         .issue_token(&mut interactor, "AgentToken", "AGENT")
@@ -57,7 +56,7 @@ async fn test_escrow_deposit_and_release() {
         .register_agent(&mut interactor, "WorkerBot", "uri://worker", vec![])
         .await;
 
-    let mut validation = ValidationRegistryInteractor::init(
+    let validation = ValidationRegistryInteractor::init(
         &mut interactor,
         owner_address.clone(),
         identity.address(),

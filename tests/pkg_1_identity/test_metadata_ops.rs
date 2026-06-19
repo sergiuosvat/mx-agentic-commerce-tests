@@ -30,11 +30,11 @@ async fn test_metadata_ops() {
         &alice_address.to_bech32("erd").to_string(),
     );
 
-    interactor.register_wallet(alice_wallet.clone()).await;
+    interactor.register_wallet(alice_wallet).await;
     let wallet_bech32 = alice_address.to_bech32("erd").to_string();
     fund_address_on_simulator(&wallet_bech32, "100000000000000000000000", &gateway_url).await;
 
-    let mut identity_interactor =
+    let identity_interactor =
         IdentityRegistryInteractor::init(&mut interactor, alice_address.clone()).await;
     identity_interactor
         .issue_token(&mut interactor, "AgentToken", "AGENT")

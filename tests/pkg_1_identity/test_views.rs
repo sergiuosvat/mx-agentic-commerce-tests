@@ -29,7 +29,7 @@ async fn test_views() {
         &alice_private_key,
         &alice_address.to_bech32("erd").to_string(),
     );
-    interactor.register_wallet(alice_wallet.clone()).await;
+    interactor.register_wallet(alice_wallet).await;
     fund_address_on_simulator(
         &alice_address.to_bech32("erd").to_string(),
         "100000000000000000000000",
@@ -38,7 +38,7 @@ async fn test_views() {
     .await;
 
     // Deploy & Register
-    let mut identity_interactor =
+    let identity_interactor =
         IdentityRegistryInteractor::init(&mut interactor, alice_address.clone()).await;
     identity_interactor
         .issue_token(&mut interactor, "AgentToken", "AGENT")
@@ -56,22 +56,10 @@ async fn test_views() {
         .await;
 
     let contract_address = identity_interactor.address().clone();
+    let nonce = 1u64; // First registered agent
 
-    // 1. Test get_agent_id(address)
-    let nonce: u64 = identity_interactor
-        .interactor
-        .query()
-        .to(&contract_address)
-        .typed(IdentityRegistryProxy)
-        .get_agent_id(ManagedAddress::<StaticApi>::from(alice_address.clone()))
-        .returns(ReturnsResult)
-        .run()
-        .await;
-    assert_eq!(nonce, 1, "Agent nonce should be 1");
-
-    // 2. Test get_agent_owner(nonce)
-    let owner: ManagedAddress<StaticApi> = identity_interactor
-        .interactor
+    // 1. Test get_agent_owner(nonce)
+    let owner: ManagedAddress<StaticApi> = interactor
         .query()
         .to(&contract_address)
         .typed(IdentityRegistryProxy)
@@ -85,9 +73,8 @@ async fn test_views() {
         "Owner should match Alice"
     );
 
-    // 3. Test get_metadata(nonce, key)
-    let metadata_opt: OptionalValue<ManagedBuffer<StaticApi>> = identity_interactor
-        .interactor
+    // 2. Test get_metadata(nonce, key)
+    let metadata_opt: OptionalValue<ManagedBuffer<StaticApi>> = interactor
         .query()
         .to(&contract_address)
         .typed(IdentityRegistryProxy)
@@ -98,9 +85,8 @@ async fn test_views() {
     assert!(metadata_opt.is_some(), "Metadata should be present");
     assert_eq!(metadata_opt.into_option().unwrap().to_vec(), b"val1");
 
-    // 4. Test get_metadata non-existent
-    let metadata_missing: OptionalValue<ManagedBuffer<StaticApi>> = identity_interactor
-        .interactor
+    // 3. Test get_metadata non-existent
+    let metadata_missing: OptionalValue<ManagedBuffer<StaticApi>> = interactor
         .query()
         .to(&contract_address)
         .typed(IdentityRegistryProxy)

@@ -7,7 +7,6 @@ use tokio::time::{sleep, Duration};
 
 #[path = "common/mod.rs"]
 mod test_utils;
-use ::common::{MetadataEntry, ServiceConfigInput};
 
 
 #[tokio::test]

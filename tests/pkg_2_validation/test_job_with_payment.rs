@@ -2,7 +2,7 @@ use crate::common::{
     create_pem_file, fund_address_on_simulator, generate_random_private_key,
     IdentityRegistryInteractor, ServiceConfigInput, ValidationRegistryInteractor,
 };
-use multiversx_sc::types::{BigUint, EgldOrEsdtTokenIdentifier, TokenIdentifier};
+use multiversx_sc::types::{BigUint, EgldOrEsdtTokenIdentifier};
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
 use tokio::time::{sleep, Duration};
@@ -30,7 +30,7 @@ async fn test_job_with_payment() {
         &owner_private_key,
         &owner_address.to_bech32("erd").to_string(),
     );
-    interactor.register_wallet(owner_wallet.clone()).await;
+    interactor.register_wallet(owner_wallet).await;
 
     fund_address_on_simulator(
         &owner_address.to_bech32("erd").to_string(),
@@ -40,7 +40,7 @@ async fn test_job_with_payment() {
     .await;
 
     // 2. Deploy Identity & Issue Token
-    let mut identity_interactor =
+    let identity_interactor =
         IdentityRegistryInteractor::init(&mut interactor, owner_address.clone()).await;
     identity_interactor
         .issue_token(&mut interactor, "AgentToken", "AGENT")
@@ -69,7 +69,7 @@ async fn test_job_with_payment() {
     let agent_nonce = 1;
 
     // 4. Deploy Validation Registry
-    let mut validation_interactor = ValidationRegistryInteractor::init(
+    let validation_interactor = ValidationRegistryInteractor::init(
         &mut interactor,
         owner_address.clone(),
         identity_interactor.address(),
@@ -91,11 +91,11 @@ async fn test_job_with_payment() {
 
     let mut interactor_employer = Interactor::new(&gateway_url).await.use_chain_simulator(true);
     interactor_employer
-        .register_wallet(employer_wallet.clone())
+        .register_wallet(employer_wallet)
         .await;
 
     let contract_address = validation_interactor.contract_address.clone();
-    let mut employer_validation_interactor = ValidationRegistryInteractor {
+    let employer_validation_interactor = ValidationRegistryInteractor {
         wallet_address: employer_address.clone(),
         contract_address,
     };

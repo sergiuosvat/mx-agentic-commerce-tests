@@ -31,12 +31,12 @@ async fn test_token_issuance_happy_path() {
         &alice_address.to_bech32("erd").to_string(),
     );
 
-    interactor.register_wallet(alice_wallet.clone()).await;
+    interactor.register_wallet(alice_wallet).await;
     let wallet_bech32 = alice_address.to_bech32("erd").to_string();
     fund_address_on_simulator(&wallet_bech32, "100000000000000000000000", &gateway_url).await; // 100k EGLD
 
     // Deploy
-    let mut identity_interactor =
+    let identity_interactor =
         IdentityRegistryInteractor::init(&mut interactor, alice_address.clone()).await;
 
     // Issue Token
@@ -83,11 +83,11 @@ async fn test_token_issuance_errors() {
         &bob_address.to_bech32("erd").to_string(),
     );
 
-    interactor.register_wallet(bob_wallet.clone()).await;
+    interactor.register_wallet(bob_wallet).await;
     let wallet_bech32 = bob_address.to_bech32("erd").to_string();
     fund_address_on_simulator(&wallet_bech32, "100000000000000000000000", &gateway_url).await;
 
-    let mut identity_interactor =
+    let identity_interactor =
         IdentityRegistryInteractor::init(&mut interactor, bob_address.clone()).await;
 
     // 1. Issue Token (Success)

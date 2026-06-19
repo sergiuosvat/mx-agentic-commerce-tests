@@ -1,5 +1,4 @@
-use mpp_session_mvx_interactor::mpp_session_mvx_proxy::*;
-use multiversx_sc::types::{BigUint, EgldOrEsdtTokenIdentifier, ManagedBuffer, TokenIdentifier, ManagedAddress};
+use common::mpp_session_mvx_proxy::MppSessionContractProxy;
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
 use tokio::time::{sleep, Duration};
@@ -32,12 +31,12 @@ async fn test_session_lifecycle_cs() {
     let alice_signing_key = SigningKey::generate(&mut csprng);
     let alice_pk_hex = hex::encode(alice_signing_key.to_bytes());
     let alice_wallet = Wallet::from_private_key(&alice_pk_hex).unwrap();
-    let alice_addr = interactor.register_wallet(alice_wallet.clone()).await;
+    let alice_addr = interactor.register_wallet(alice_wallet).await;
     fund_address_on_simulator(&alice_addr.to_bech32("erd").to_string(), "100000000000000000000", &gateway_url).await; // 100 EGLD
 
     let bob_pk_hex = hex::encode(SigningKey::generate(&mut csprng).to_bytes());
     let bob_wallet = Wallet::from_private_key(&bob_pk_hex).unwrap();
-    let bob_addr = interactor.register_wallet(bob_wallet.clone()).await;
+    let bob_addr = interactor.register_wallet(bob_wallet).await;
 
     // 2. Deploy MPP Session Contract
     let contract_code = multiversx_sc_snippets::imports::BytesValue::interpret_from(

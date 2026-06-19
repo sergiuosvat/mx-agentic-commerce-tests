@@ -38,7 +38,7 @@ async fn test_registration_flow() {
     // Fund bot so it can call register_agent
     fund_address_on_simulator(&bot_bech32, "100000000000000000000", &gateway_url).await; // 100 EGLD
     for _ in 0..3 {
-        interactor.generate_blocks(1).await;
+        let _ = interactor.generate_blocks(1).await;
         sleep(Duration::from_millis(300)).await;
     }
 
@@ -79,7 +79,7 @@ async fn test_registration_flow() {
 
     // 5. Wait for tx processing
     for _ in 0..5 {
-        interactor.generate_blocks(1).await;
+        let _ = interactor.generate_blocks(1).await;
         sleep(Duration::from_millis(300)).await;
     }
 
@@ -131,7 +131,7 @@ async fn test_nft_in_bot_wallet() {
         .await;
 
     for _ in 0..5 {
-        interactor.generate_blocks(1).await;
+        let _ = interactor.generate_blocks(1).await;
         sleep(Duration::from_millis(300)).await;
     }
 

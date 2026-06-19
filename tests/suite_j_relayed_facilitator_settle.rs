@@ -1,4 +1,3 @@
-use bech32;
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
 use serde_json::{json, Value};
@@ -127,7 +126,7 @@ async fn test_relayed_facilitator_settle() {
     // ────────────────────────────────────────────
     let registry_addr;
     {
-        let mut registry = IdentityRegistryInteractor::init(&mut interactor, admin.clone()).await;
+        let registry = IdentityRegistryInteractor::init(&mut interactor, admin.clone()).await;
         registry_addr = address_to_bech32(registry.address());
         println!("Registry: {}", registry_addr);
 

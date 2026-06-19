@@ -102,7 +102,7 @@ async fn test_mcp_features() {
         panic!("Tools List Failed: {:?}", error);
     }
     let tools = tools_resp["result"]["tools"].as_array().expect("No tools found");
-    assert!(tools.len() > 0, "No tools returned");
+    assert!(!tools.is_empty(), "No tools returned");
     
     // Verify specific tools exist
     let tool_names: Vec<&str> = tools.iter()

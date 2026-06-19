@@ -1,4 +1,3 @@
-use multiversx_sc::types::{Address, CodeMetadata, ManagedBuffer};
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
 use tokio::time::{sleep, Duration};
@@ -33,7 +32,6 @@ async fn test_identity_extended_operations() {
 
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
     let wallet_alice = interactor.register_wallet(test_wallets::alice()).await;
-    let _alice_bech32 = address_to_bech32(&wallet_alice);
 
     // ── 2. Deploy Identity Registry ──
     let identity = IdentityRegistryInteractor::init(&mut interactor, wallet_alice.clone()).await;

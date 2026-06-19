@@ -25,6 +25,14 @@ pub struct EscrowData<M: ManagedTypeApi> {
     pub status: EscrowStatus,
 }
 
+pub struct EscrowDeposit<'a> {
+    pub job_id: &'a str,
+    pub receiver: &'a Address,
+    pub poa_hash: &'a str,
+    pub deadline: u64,
+    pub amount_wei: u64,
+}
+
 pub struct EscrowInteractor {
     pub wallet_address: Address,
     pub contract_address: Address,
@@ -104,28 +112,27 @@ impl EscrowInteractor {
     pub async fn deposit_egld_expect_err(
         &self,
         interactor: &mut Interactor,
-        job_id: &str,
-        receiver: &Address,
-        poa_hash: &str,
-        deadline: u64,
-        amount_wei: u64,
+        deposit: EscrowDeposit<'_>,
         expected_err: &str,
     ) {
-        let job_id_buf: ManagedBuffer<StaticApi> = ManagedBuffer::new_from_bytes(job_id.as_bytes());
-        let receiver_addr: ManagedAddress<StaticApi> = ManagedAddress::from_address(receiver);
-        let poa_buf: ManagedBuffer<StaticApi> = ManagedBuffer::new_from_bytes(poa_hash.as_bytes());
+        let job_id_buf: ManagedBuffer<StaticApi> =
+            ManagedBuffer::new_from_bytes(deposit.job_id.as_bytes());
+        let receiver_addr: ManagedAddress<StaticApi> =
+            ManagedAddress::from_address(deposit.receiver);
+        let poa_buf: ManagedBuffer<StaticApi> =
+            ManagedBuffer::new_from_bytes(deposit.poa_hash.as_bytes());
 
         interactor
             .tx()
             .from(&self.wallet_address)
             .to(&self.contract_address)
             .gas(600_000_000)
-            .egld(amount_wei)
+            .egld(deposit.amount_wei)
             .raw_call("deposit")
             .argument(&job_id_buf)
             .argument(&receiver_addr)
             .argument(&poa_buf)
-            .argument(&deadline)
+            .argument(&deposit.deadline)
             .returns(ExpectError(4, expected_err))
             .run()
             .await;

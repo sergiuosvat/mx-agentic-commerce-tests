@@ -1,4 +1,3 @@
-use bech32;
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
 use serde_json::{json, Value};
@@ -48,7 +47,7 @@ async fn test_relayed_mpp_facilitator() {
     // 2. Setup Alice's wallet (which is used as Relayer by mpp-facilitator-mvx defaults)
     let project_root = std::env::current_dir().unwrap();
     let alice_pem_path = project_root.join("alice.pem");
-    let alice_wallet = Wallet::from_pem_file(&alice_pem_path.to_str().unwrap()).unwrap();
+    let alice_wallet = Wallet::from_pem_file(alice_pem_path.to_str().unwrap()).unwrap();
     let relayer_sc_addr = Address::from_slice(alice_wallet.to_address().as_bytes());
     let relayer_bech32 = address_to_bech32(&relayer_sc_addr);
 
@@ -67,15 +66,13 @@ async fn test_relayed_mpp_facilitator() {
     
     // Both Sender and Relayer must be in the same shard for Relayed V3!
     let relayer_pk_last_byte = alice_wallet.to_address().as_bytes()[31];
-    let mut bob_pk = String::new();
-    let mut bob_wallet;
-    loop {
-        bob_pk = generate_random_private_key();
-        bob_wallet = Wallet::from_private_key(&bob_pk).unwrap();
+    let (bob_pk, bob_wallet) = loop {
+        let bob_pk = generate_random_private_key();
+        let bob_wallet = Wallet::from_private_key(&bob_pk).unwrap();
         if bob_wallet.to_address().as_bytes()[31] == relayer_pk_last_byte {
-            break;
+            break (bob_pk, bob_wallet);
         }
-    }
+    };
     let bob_addr = address_to_bech32(&bob_wallet.to_address());
     let bob_sc_addr = Address::from_slice(bob_wallet.to_address().as_bytes());
     

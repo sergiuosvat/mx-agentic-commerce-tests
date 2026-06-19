@@ -98,7 +98,7 @@ async fn test_agent_to_agent_discovery() {
     let wallet_bob = interactor.register_wallet(test_wallets::bob()).await;
 
     // ── 3. Deploy Identity Registry & Register Agents ──
-    let mut identity =
+    let identity =
         IdentityRegistryInteractor::init(&mut interactor, wallet_alice.clone()).await;
     identity
         .issue_token(&mut interactor, "AgentToken", "AGENT")
@@ -122,8 +122,6 @@ async fn test_agent_to_agent_discovery() {
     println!("Agent A (MoltBot) registered as nonce=1");
 
     let registry_addr = identity.address().clone();
-    // Drop identity to release the interactor borrow
-    drop(identity);
 
     // Register Agent B (ServiceBot) from Bob's wallet — nonce=2
     // Must use a different wallet since contract enforces 1 agent per address

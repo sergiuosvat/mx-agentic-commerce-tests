@@ -1,12 +1,12 @@
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
 use serde_json::json;
-use std::process::{Command, Stdio};
+use std::process::Command;
 use tokio::time::{sleep, Duration};
 
 mod common;
 use common::{
-    address_to_bech32, create_pem_file, fund_address_on_simulator, generate_blocks_on_simulator,
+    address_to_bech32, fund_address_on_simulator, generate_blocks_on_simulator,
     generate_random_private_key, get_simulator_chain_id, IdentityRegistryInteractor,
     ValidationRegistryInteractor,
 };
@@ -44,7 +44,7 @@ async fn test_x402_lifecycle_with_proof() {
 
     let buyer_pk = generate_random_private_key();
     let buyer_wallet = Wallet::from_private_key(&buyer_pk).unwrap();
-    let buyer_bech32 = buyer_wallet.address().to_string();
+    let buyer_bech32 = buyer_wallet.to_address().to_bech32("erd").to_string();
     fund_address_on_simulator(&buyer_bech32, "1000000000000000000000", &gateway_url).await;
 
     // ── 3. Deploy Identity + Validation Registries ──
@@ -158,7 +158,7 @@ async fn test_x402_lifecycle_with_proof() {
     }
 
     let signed_tx: serde_json::Value =
-        serde_json::from_str(&String::from_utf8(output.stdout).unwrap().trim())
+        serde_json::from_str(String::from_utf8(output.stdout).unwrap().trim())
             .expect("Invalid JSON");
 
     let mut payload = signed_tx;

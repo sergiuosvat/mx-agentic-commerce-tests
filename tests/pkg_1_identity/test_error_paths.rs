@@ -2,8 +2,7 @@ use crate::common::{
     create_pem_file, fund_address_on_simulator, generate_random_private_key,
     IdentityRegistryInteractor,
 };
-use identity_registry_interactor::identity_registry_proxy::IdentityRegistryProxy;
-use multiversx_sc::types::{ManagedBuffer, TokenIdentifier};
+use multiversx_sc::types::ManagedBuffer;
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
 use tokio::time::{sleep, Duration};
@@ -27,7 +26,7 @@ async fn test_error_paths() {
         &alice_private_key,
         &alice_address.to_bech32("erd").to_string(),
     );
-    interactor.register_wallet(alice_wallet.clone()).await;
+    interactor.register_wallet(alice_wallet).await;
     fund_address_on_simulator(
 		&alice_address.to_bech32("erd").to_string(),
 		"100000000000000000000000",
@@ -39,7 +38,7 @@ async fn test_error_paths() {
     let bob_private_key = generate_random_private_key();
     let bob_wallet = Wallet::from_private_key(&bob_private_key).unwrap();
     let bob_address = bob_wallet.to_address();
-    interactor.register_wallet(bob_wallet.clone()).await;
+    interactor.register_wallet(bob_wallet).await;
     fund_address_on_simulator(
 		&bob_address.to_bech32("erd").to_string(),
 		"100000000000000000000000",
@@ -48,13 +47,13 @@ async fn test_error_paths() {
     .await;
 
     // Deploy contract
-    let mut identity_interactor =
+    let identity_interactor =
         IdentityRegistryInteractor::init(&mut interactor, alice_address.clone()).await;
     let contract_address = identity_interactor.address().clone();
 
     // 1. Register Agent BEFORE Issue Token -> ERR_TOKEN_NOT_ISSUED
     println!("Test: Register before issue token...");
-    let err_reg = interactor
+    interactor
         .tx()
         .from(&alice_address)
         .to(&contract_address)
@@ -78,7 +77,7 @@ async fn test_error_paths() {
 
     println!("Test: Issue token twice...");
     // Attempt second issuance
-    let err_issue = interactor
+    interactor
         .tx()
         .from(&alice_address)
         .to(&contract_address)
@@ -96,7 +95,7 @@ async fn test_error_paths() {
         .register_agent(&mut interactor, "Bot1", "uri", vec![])
         .await; // Success
 
-    let err_dup = interactor
+    interactor
         .tx()
         .from(&alice_address)
         .to(&contract_address)
@@ -165,7 +164,7 @@ async fn test_error_paths() {
     println!("Test: Set metadata by non-owner...");
     // `set_metadata` checks `require_agent_owner`.
     // It is NOT payable.
-    let err_meta = interactor
+    interactor
         .tx()
         .from(&bob_address)
         .to(&contract_address)

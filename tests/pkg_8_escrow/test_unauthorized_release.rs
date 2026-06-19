@@ -38,9 +38,9 @@ async fn test_escrow_unauthorized_release() {
         &owner_key,
         &owner_address.to_bech32("erd").to_string(),
     );
-    interactor.register_wallet(owner_wallet.clone()).await;
-    interactor.register_wallet(attacker_wallet.clone()).await;
-    interactor.register_wallet(receiver_wallet.clone()).await;
+    interactor.register_wallet(owner_wallet).await;
+    interactor.register_wallet(attacker_wallet).await;
+    interactor.register_wallet(receiver_wallet).await;
 
     fund_address_on_simulator(
         &owner_address.to_bech32("erd").to_string(),

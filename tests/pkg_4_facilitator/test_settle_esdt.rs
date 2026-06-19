@@ -2,7 +2,6 @@ use crate::common::{
     fund_address_on_simulator, generate_blocks_on_simulator, generate_random_private_key,
     get_simulator_chain_id, issue_fungible_esdt,
 };
-use multiversx_sc::types::Address;
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
 use std::process::Command;

@@ -8,3 +8,4 @@ mx-chain-simulator-go
 *.txt
 node_modules/
 node_modules
+tests/common/mpp_session_mvx_proxy.rs

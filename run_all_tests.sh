@@ -12,10 +12,12 @@
 #   ./run_all_tests.sh --rust       # mx-8004 smart contract tests
 #   ./run_all_tests.sh --pkg        # Package-level tests (pkg_1–9, chain-only)
 #   ./run_all_tests.sh --all        # Everything including pkg + sibling TS services
+#   ./run_all_tests.sh --integration # This repo only: TS unit + rust + suites + pkg
 #
 # Environment:
 #   RUN_CHAIN_TESTS=1               Enable on-chain MPP payment test (needs funded keys)
 #   FAIL_ON_RETRY=1                 Exit non-zero if any suite passed only after retry
+#   STOP_ON_FAIL=1                  Stop after the first failing suite/package
 
 set -euo pipefail
 
@@ -27,6 +29,7 @@ RETRY_DELAY=5
 COOLDOWN=3
 LOG_DIR="$SCRIPT_DIR/target/test-logs"
 FAIL_ON_RETRY="${FAIL_ON_RETRY:-0}"
+STOP_ON_FAIL="${STOP_ON_FAIL:-0}"
 CARGO_TEST_FLAGS="-- --test-threads=1 --nocapture"
 
 RED='\033[0;31m'
@@ -152,7 +155,19 @@ run_test() {
     return 1
 }
 
+# Run one test; honor STOP_ON_FAIL by exiting the script on failure.
+run_test_or_stop() {
+    run_test "$@" || {
+        if [ "$STOP_ON_FAIL" = "1" ]; then
+            print_summary
+            exit 1
+        fi
+        return 0
+    }
+}
+
 between_suites() {
+    kill_test_processes
     wait_for_port_free "$SIM_PORT" 10
     sleep "$COOLDOWN"
 }
@@ -161,15 +176,14 @@ run_mpp_typescript_tests() {
     log_header "MPP TypeScript Tests (this repo)"
 
     if [ ! -d "$SCRIPT_DIR/node_modules" ]; then
-        info="Installing npm dependencies..."
-        echo -e "  ${BLUE}ℹ${NC} $info"
+        echo -e "  ${BLUE}ℹ${NC} Installing npm dependencies..."
         (cd "$SCRIPT_DIR" && npm install --silent)
     fi
 
-    run_test "TS: MPP unit (402 challenge)" "npm run test:unit" "$SCRIPT_DIR" || true
+    run_test_or_stop "TS: MPP unit (402 challenge)" "npm run test:unit" "$SCRIPT_DIR"
 
     if [ "${RUN_CHAIN_TESTS:-0}" = "1" ]; then
-        run_test "TS: MPP chain payment" "npm run test:chain" "$SCRIPT_DIR" || true
+        run_test_or_stop "TS: MPP chain payment" "npm run test:chain" "$SCRIPT_DIR"
     else
         echo -e "  ${YELLOW}⏭ Skipped MPP chain test (set RUN_CHAIN_TESTS=1 to enable)${NC}"
     fi
@@ -190,7 +204,7 @@ run_typescript_service_tests() {
     for svc in "${services[@]}"; do
         IFS='|' read -r name cmd cwd <<< "$svc"
         if [ -d "$cwd" ]; then
-            run_test "TS: $name" "$cmd" "$cwd" || true
+            run_test_or_stop "TS: $name" "$cmd" "$cwd"
         else
             echo -e "  ${YELLOW}⏭ Skipped $name (dir not found)${NC}"
         fi
@@ -202,7 +216,7 @@ run_rust_sc_tests() {
 
     local mx8004_dir="$ROOT_DIR/mx-8004"
     if [ -d "$mx8004_dir" ]; then
-        run_test "Rust SC: mx-8004" "cargo test $CARGO_TEST_FLAGS" "$mx8004_dir" || true
+        run_test_or_stop "Rust SC: mx-8004" "cargo test $CARGO_TEST_FLAGS" "$mx8004_dir"
     fi
 }
 
@@ -239,7 +253,7 @@ run_chain_sim_suites() {
 
     for suite in "${suites[@]}"; do
         IFS='|' read -r name test_name <<< "$suite"
-        run_test "$name" "cargo test --test $test_name $CARGO_TEST_FLAGS" "$SCRIPT_DIR" || true
+        run_test_or_stop "$name" "cargo test --test $test_name $CARGO_TEST_FLAGS" "$SCRIPT_DIR"
         between_suites
     done
 }
@@ -263,7 +277,7 @@ run_offchain_suites() {
 
     for suite in "${suites[@]}"; do
         IFS='|' read -r name test_name <<< "$suite"
-        run_test "$name" "cargo test --test $test_name $CARGO_TEST_FLAGS" "$SCRIPT_DIR" || true
+        run_test_or_stop "$name" "cargo test --test $test_name $CARGO_TEST_FLAGS" "$SCRIPT_DIR"
         between_suites
     done
 }
@@ -289,7 +303,7 @@ run_package_tests() {
 
     for pkg in "${pkgs[@]}"; do
         IFS='|' read -r name test_name <<< "$pkg"
-        run_test "$name" "cargo test --test $test_name $CARGO_TEST_FLAGS" "$SCRIPT_DIR" || true
+        run_test_or_stop "$name" "cargo test --test $test_name $CARGO_TEST_FLAGS" "$SCRIPT_DIR"
         between_suites
     done
 }
@@ -350,6 +364,13 @@ case "${1:-default}" in
     --all)
         run_mpp_typescript_tests
         run_typescript_service_tests
+        run_rust_sc_tests
+        run_chain_sim_suites
+        run_offchain_suites
+        run_package_tests
+        ;;
+    --integration)
+        run_mpp_typescript_tests
         run_rust_sc_tests
         run_chain_sim_suites
         run_offchain_suites

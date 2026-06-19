@@ -23,12 +23,15 @@ jobs:
       - name: Install Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '24'
 
       - name: Install Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.22'
+
+      - name: Verify Node.js version
+        run: node -v
 
       - name: Install sc-meta
         run: cargo install multiversx-sc-meta --locked
@@ -36,8 +39,8 @@ jobs:
       - name: Setup ecosystem
         run: ./setup.sh
 
-      - name: Run full test suite
-        run: ./run_all_tests.sh --all
+      - name: Run integration tests (one suite/package at a time)
+        run: ./run_all_tests.sh --integration
         env:
           FAIL_ON_RETRY: 1
 

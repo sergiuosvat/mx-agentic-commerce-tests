@@ -32,6 +32,7 @@ async fn test_relayed_registration() {
     registry
         .issue_token(&mut interactor, "Agent", "AGENT")
         .await;
+    generate_blocks_on_simulator(20, &gateway_url).await;
 
     // Setup Relayer Wallets (Generate multiple to cover all shards)
     let relayer_wallets_dir = std::path::PathBuf::from(temp_relayer_wallets_dir("relayed"));

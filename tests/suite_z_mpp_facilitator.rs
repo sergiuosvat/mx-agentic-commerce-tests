@@ -9,7 +9,8 @@ mod common;
 use common::{
     wait_for_simulator_ready,
     address_to_bech32, create_temp_pem_file, fund_address_on_simulator, generate_blocks_on_simulator,
-    generate_random_private_key, start_mpp_facilitator,
+    generate_random_private_key, mpp_facilitator_available, start_mpp_facilitator,
+    MPP_FACILITATOR_CWD,
 };
 
 /// Suite Z: MPP Facilitator Relayed V3 tests
@@ -26,6 +27,13 @@ use common::{
 ///   6. Verify on-chain payment
 #[tokio::test]
 async fn test_relayed_mpp_facilitator() {
+    if !mpp_facilitator_available() {
+        println!(
+            "Skipping: mpp-facilitator-mvx not available at {MPP_FACILITATOR_CWD} (clone sibling repo, npm install, npm run build)"
+        );
+        return;
+    }
+
     let mut pm = ProcessManager::new();
 
     // 1. Start Chain Simulator

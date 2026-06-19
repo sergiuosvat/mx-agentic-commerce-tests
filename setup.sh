@@ -5,7 +5,7 @@ set -o pipefail
 # ==============================================================================
 # Agentic Commerce Tests — Full Environment Setup
 # Clone, build, and configure everything from scratch.
-# Assumes: git, node 18+, npm, cargo installed.
+# Assumes: git, node 24+, npm, cargo installed.
 # ==============================================================================
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
@@ -32,12 +32,12 @@ echo ""
 echo "▶ Checking prerequisites..."
 
 command -v git   >/dev/null 2>&1 || fail "git not found"
-command -v node  >/dev/null 2>&1 || fail "node not found. Install Node.js v18+"
-command -v npm   >/dev/null 2>&1 || fail "npm not found. Install Node.js v18+"
+command -v node  >/dev/null 2>&1 || fail "node not found. Install Node.js v24+"
+command -v npm   >/dev/null 2>&1 || fail "npm not found. Install Node.js v24+"
 command -v cargo >/dev/null 2>&1 || fail "cargo not found. Install Rust toolchain"
 
 NODE_MAJOR=$(node -v | sed 's/v//' | cut -d. -f1)
-[ "$NODE_MAJOR" -ge 18 ] 2>/dev/null || warn "Node.js v18+ recommended (found $(node -v))"
+[ "$NODE_MAJOR" -ge 24 ] 2>/dev/null || warn "Node.js v24+ recommended (found $(node -v))"
 
 ok "git, node $(node -v), npm $(npm -v), cargo $(cargo --version | cut -d' ' -f2)"
 

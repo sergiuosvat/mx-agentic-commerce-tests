@@ -1,7 +1,8 @@
 use crate::common::{
     address_to_bech32, fund_address_on_simulator, generate_blocks_on_simulator,
-    generate_random_private_key, get_simulator_chain_id, issue_fungible_esdt,
-    start_facilitator, IdentityRegistryInteractor, TestEnv, wait_for_simulator_ready,
+    generate_random_private_key, get_sender_shard_tx_nonce, get_simulator_chain_id,
+    issue_fungible_esdt, start_facilitator, IdentityRegistryInteractor, TestEnv,
+    wait_for_simulator_ready,
 };
 use multiversx_sc_snippets::imports::*;
 use std::process::Command;
@@ -19,19 +20,19 @@ async fn test_settle_esdt() {
     let sender_pk = generate_random_private_key();
     let sender_wallet = Wallet::from_private_key(&sender_pk).unwrap();
     let sender_address = sender_wallet.to_address().to_bech32("erd").to_string();
-    let sender_sc_address = interactor.register_wallet(sender_wallet).await;
 
     let receiver_pk = generate_random_private_key();
     let receiver_wallet = Wallet::from_private_key(&receiver_pk).unwrap();
     let receiver_address = receiver_wallet.to_address().to_bech32("erd").to_string();
 
-    // 1. Fund Sender (needs EGLD for issuance fees + gas)
+    // 1. Fund sender (needs EGLD for issuance fees + gas)
     println!("Funding Sender: {}", sender_address);
     fund_address_on_simulator(&sender_address, "500000000000000000000", &gateway_url).await; // 500 EGLD
 
     // Advance past epoch 0 — ESDT system SC is disabled at epoch 0
-    // RoundsPerEpoch = 20, so 25 blocks guarantees epoch >= 1
     generate_blocks_on_simulator(25, &gateway_url).await;
+
+    let sender_sc_address = interactor.register_wallet(sender_wallet).await;
 
     // 2. Issue ESDT
     let token_id = issue_fungible_esdt(
@@ -45,6 +46,11 @@ async fn test_settle_esdt() {
     )
     .await;
     println!("Issued Token: {}", token_id);
+
+    generate_blocks_on_simulator(10, &gateway_url).await;
+    let sender_nonce =
+        get_sender_shard_tx_nonce(&interactor, &gateway_url, &sender_address, &sender_sc_address)
+            .await;
 
     // 3. Start Facilitator
     let chain_id = get_simulator_chain_id(&gateway_url).await;
@@ -74,7 +80,7 @@ async fn test_settle_esdt() {
     // Use the updated sign_tx.ts with --token and --amount
     let output = Command::new("npx")
         .arg("ts-node")
-        .arg("../moltbot-starter-kit/scripts/sign_tx.ts")
+        .arg("scripts/sign_tx.ts")
         .arg("--sender-pk")
         .arg(&sender_pk)
         .arg("--receiver")
@@ -86,13 +92,14 @@ async fn test_settle_esdt() {
         .arg("--amount")
         .arg(esdt_amount)
         .arg("--nonce")
-        .arg("1") // Nonce 1 (0 was issuance)
+        .arg(sender_nonce.to_string())
         .arg("--gas-limit")
         .arg("500000") // ESDT transfer needs more gas
         .arg("--gas-price")
         .arg("1000000000")
         .arg("--chain-id")
         .arg(&chain_id)
+        .current_dir("../moltbot-starter-kit")
         .output()
         .expect("Failed to sign transaction");
 

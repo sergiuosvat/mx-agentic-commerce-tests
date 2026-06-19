@@ -19,6 +19,9 @@
   "author": "",
   "license": "ISC",
   "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
   "bugs": {
     "url": "https://github.com/sasurobert/mx-agentic-commerce-tests/issues"
   },

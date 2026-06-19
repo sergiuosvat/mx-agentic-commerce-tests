@@ -261,7 +261,7 @@ async fn test_relayed_agent_operations() {
                 const signer = UserSigner.fromPem(pemContent);
                 const sender = new Address('{}');
 
-                const rawAbi = fs.readFileSync('identity-registry.abi.json', 'utf8')
+                const rawAbi = fs.readFileSync('src/abis/identity-registry.abi.json', 'utf8')
                     .replace(/\bTokenId\b/g, 'TokenIdentifier')
                     .replace(/\bNonZeroBigUint\b/g, 'BigUint')
                     .replace(/\bcounted-variadic\b/g, 'variadic')

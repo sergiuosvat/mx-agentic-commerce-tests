@@ -59,6 +59,35 @@ pub async fn get_simulator_chain_id(gateway_url: &str) -> String {
         .to_string()
 }
 
+/// Read on-chain account nonce from the simulator gateway.
+pub async fn get_account_nonce(gateway_url: &str, address_bech32: &str) -> u64 {
+    let client = reqwest::Client::new();
+    let resp: serde_json::Value = client
+        .get(format!("{}/address/{}", gateway_url, address_bech32))
+        .send()
+        .await
+        .expect("Failed to get account")
+        .json()
+        .await
+        .expect("Failed to parse account");
+
+    resp["data"]["account"]["nonce"]
+        .as_u64()
+        .unwrap_or(0)
+}
+
+/// Nonce for the next signed tx when gateway and interactor lag the sender shard.
+pub async fn get_sender_shard_tx_nonce(
+    interactor: &Interactor,
+    gateway_url: &str,
+    address_bech32: &str,
+    address: &Address,
+) -> u64 {
+    let gateway_nonce = get_account_nonce(gateway_url, address_bech32).await;
+    let interactor_nonce = interactor.get_account(address).await.nonce;
+    gateway_nonce.max(interactor_nonce) + 1
+}
+
 /// Fund an address on the chain simulator using /simulator/set-state.
 pub async fn fund_address_on_simulator(address_bech32: &str, balance_wei: &str, gateway_url: &str) {
     let client = reqwest::Client::new();

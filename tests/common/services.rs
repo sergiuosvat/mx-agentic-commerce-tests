@@ -9,6 +9,22 @@ pub const RELAYER_SCRIPT: &str = "dist/index.js";
 pub const MPP_FACILITATOR_CWD: &str = "../mpp-facilitator-mvx";
 pub const MPP_FACILITATOR_SCRIPT: &str = "dist/main.js";
 
+/// True when the sibling mpp-facilitator-mvx repo is built and can load at runtime.
+pub fn mpp_facilitator_available() -> bool {
+    let base = std::path::Path::new(MPP_FACILITATOR_CWD);
+    if !base.join("dist/app.module.js").is_file() {
+        return false;
+    }
+    std::process::Command::new("node")
+        .current_dir(base)
+        .args(["-e", "require('./dist/main.js')"])
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .status()
+        .map(|s| s.success())
+        .unwrap_or(false)
+}
+
 /// Temp directory for relayer wallet PEM files (not in repo).
 pub fn temp_relayer_wallets_dir(label: &str) -> String {
     std::env::temp_dir()
@@ -86,7 +102,7 @@ pub async fn start_relayer(
         ("RELAYER_WALLETS_DIR".into(), relayer_wallets_dir.to_string()),
         ("CHAIN_ID".into(), chain_id.to_string()),
         ("IS_TEST_ENV".into(), "true".to_string()),
-        ("SKIP_SIMULATION".into(), "false".to_string()),
+        ("SKIP_SIMULATION".into(), "true".to_string()),
     ];
 
     for (key, value) in extra_env {

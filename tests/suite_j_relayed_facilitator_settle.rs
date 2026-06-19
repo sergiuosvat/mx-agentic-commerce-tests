@@ -8,12 +8,10 @@ use tokio::time::{sleep, Duration};
 mod common;
 use common::{
     wait_for_simulator_ready,
-    address_to_bech32, create_pem_file, fund_address_on_simulator, generate_blocks_on_simulator,
-    generate_random_private_key, IdentityRegistryInteractor,
+    address_to_bech32, create_pem_file, create_temp_pem_file, fund_address_on_simulator,
+    generate_blocks_on_simulator, generate_random_private_key, start_facilitator,
+    temp_relayer_wallets_dir, IdentityRegistryInteractor,
 };
-
-const FACILITATOR_PORT: u16 = 3005;
-const FACILITATOR_URL: &str = "http://localhost:3005";
 
 /// Suite J: Facilitator settle endpoint via Relayed V3
 ///
@@ -81,19 +79,21 @@ async fn test_relayed_facilitator_settle() {
         .await; // 5 EGLD
 
     // Setup temp dir and relayer wallets
-    let project_root = std::env::current_dir().unwrap();
-    let temp_dir = project_root.join("tests").join("temp_suite_j");
+    let temp_dir = std::path::PathBuf::from(format!(
+        "{}/mx-suite-j-{}",
+        std::env::temp_dir().display(),
+        std::process::id()
+    ));
     if temp_dir.exists() {
         fs::remove_dir_all(&temp_dir).unwrap();
     }
     fs::create_dir_all(&temp_dir).unwrap();
 
-    let alice_pem = temp_dir.join("alice.pem");
-    create_pem_file(alice_pem.to_str().unwrap(), &alice_pk, &alice_addr);
+    let alice_pem = create_temp_pem_file("alice", &alice_pk, &alice_addr);
     let alice_pem_abs = fs::canonicalize(&alice_pem).expect("Failed to canonicalize");
 
     // Fund 30 relayer wallets (1 EGLD each)
-    let relayer_wallets_dir = temp_dir.join("relayer_wallets");
+    let relayer_wallets_dir = std::path::PathBuf::from(temp_relayer_wallets_dir("suite_j"));
     fs::create_dir_all(&relayer_wallets_dir).unwrap();
 
     println!("Generating 30 Relayer Wallets...");
@@ -101,7 +101,6 @@ async fn test_relayed_facilitator_settle() {
         let relayer_pk = generate_random_private_key();
         let relayer_wallet = Wallet::from_private_key(&relayer_pk).unwrap();
         let relayer_addr_obj = relayer_wallet.to_address();
-        let relayer_addr = relayer_addr_obj.to_bech32("erd").to_string();
         let relayer_sc_addr = Address::from_slice(relayer_addr_obj.as_bytes());
 
         interactor
@@ -112,8 +111,11 @@ async fn test_relayed_facilitator_settle() {
             .run()
             .await;
 
-        let relayer_pem = relayer_wallets_dir.join(format!("relayer_{}.pem", i));
-        create_pem_file(relayer_pem.to_str().unwrap(), &relayer_pk, &relayer_addr);
+        let relayer_pem = relayer_wallets_dir.join(format!("relayer_{i}.pem"));
+        create_pem_file(
+            relayer_pem.to_str().unwrap(),
+            &relayer_pk,
+        );
     }
     println!("All relayer wallets funded.");
 
@@ -155,37 +157,32 @@ async fn test_relayed_facilitator_settle() {
     // ────────────────────────────────────────────
     // 4. START FACILITATOR WITH RELAYER WALLETS
     // ────────────────────────────────────────────
+    let facilitator_pk = generate_random_private_key();
     let store_path = temp_dir.join("facilitator.db");
-    let env = vec![
-        ("PORT", "3005"),
-        ("NETWORK_PROVIDER", gateway_url.as_str()),
-        ("MULTIVERSX_API_URL", gateway_url.as_str()),
-        ("MX_PROXY_URL", gateway_url.as_str()),
-        ("REGISTRY_ADDRESS", registry_addr.as_str()),
-        ("CHAIN_ID", chain_id.as_str()),
-        ("RELAYER_WALLETS_DIR", relayer_wallets_dir.to_str().unwrap()),
-        ("STORAGE_TYPE", "json"),
-        ("STORE_PATH", store_path.to_str().unwrap()),
-        ("SKIP_SIMULATION", "false"),
-        ("LOG_LEVEL", "debug"),
-    ];
+    let store_path_str = store_path.to_str().unwrap().to_string();
 
-    pm.start_node_service(
-        "Facilitator",
-        "../x402_integration/x402_facilitator",
-        "dist/index.js",
-        env,
-        FACILITATOR_PORT,
+    let facilitator_url = start_facilitator(
+        &mut pm,
+        &facilitator_pk,
+        &registry_addr,
+        &gateway_url,
+        &chain_id,
+        &[
+            ("RELAYER_WALLETS_DIR", relayer_wallets_dir.to_str().unwrap()),
+            ("STORAGE_TYPE", "json"),
+            ("STORE_PATH", store_path_str.as_str()),
+            ("SKIP_SIMULATION", "false"),
+            ("LOG_LEVEL", "debug"),
+        ],
     )
-    .expect("Failed to start Facilitator");
-    wait_for_simulator_ready(&gateway_url).await;
+    .await;
 
     // Get relayer address for Alice's shard
     let client = reqwest::Client::new();
     let relayer_addr_res = client
         .get(format!(
             "{}/relayer/address/{}",
-            FACILITATOR_URL, alice_addr
+            facilitator_url, alice_addr
         ))
         .send()
         .await
@@ -198,7 +195,7 @@ async fn test_relayed_facilitator_settle() {
     println!("Relayer for Alice shard: {}", relayer_address_bech32);
 
     // Verify relayer has funds
-    let (_, data) = bech32::decode(relayer_address_bech32).expect("Invalid bech32");
+    let data = bech32::decode(relayer_address_bech32).expect("Invalid bech32").1;
     let relayer_sc_addr_chk = Address::from_slice(&data);
     let relayer_acc = interactor.get_account(&relayer_sc_addr_chk).await;
     let bal_u128 = relayer_acc.balance.parse::<u128>().unwrap_or(0);
@@ -265,7 +262,7 @@ async fn test_relayed_facilitator_settle() {
 
     println!("Sending /settle request...");
     let res = client
-        .post(format!("{}/settle", FACILITATOR_URL))
+        .post(format!("{}/settle", facilitator_url))
         .json(&settle_req)
         .send()
         .await
@@ -285,7 +282,7 @@ async fn test_relayed_facilitator_settle() {
     wait_for_simulator_ready(&gateway_url).await;
 
     let events_res = client
-        .get(format!("{}/events?unread=true", FACILITATOR_URL))
+        .get(format!("{}/events?unread=true", facilitator_url))
         .send()
         .await
         .expect("Failed to poll events");
@@ -302,6 +299,7 @@ async fn test_relayed_facilitator_settle() {
     assert!(found, "Should find event from Alice");
 
     // Cleanup
-    let _ = fs::remove_dir_all(&temp_dir);
+    fs::remove_dir_all(&temp_dir).ok();
+    fs::remove_dir_all(&relayer_wallets_dir).ok();
     println!("✅ Suite J Complete: Facilitator Relayed Settle passed.");
 }

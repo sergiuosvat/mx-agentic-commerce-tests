@@ -8,7 +8,7 @@ use tokio::time::{sleep, Duration};
 mod common;
 use common::{
     wait_for_simulator_ready,
-    address_to_bech32, create_pem_file, generate_blocks_on_simulator, generate_random_private_key,
+    address_to_bech32, create_temp_pem_file, generate_blocks_on_simulator, generate_random_private_key,
     IdentityRegistryInteractor,
 };
 
@@ -65,20 +65,8 @@ async fn test_moltbot_update_manifest() {
 
     generate_blocks_on_simulator(10, &gateway_url).await;
 
-    // Create PEM
+    let pem_path = create_temp_pem_file("moltbot_update", &moltbot_pk, &moltbot_address_bech32);
     let project_root = std::env::current_dir().unwrap();
-    let temp_dir = project_root.join("tests").join("temp_suite_e2");
-    if temp_dir.exists() {
-        std::fs::remove_dir_all(&temp_dir).unwrap();
-    }
-    std::fs::create_dir_all(&temp_dir).unwrap();
-
-    let pem_path = temp_dir.join("moltbot.pem");
-    create_pem_file(
-        pem_path.to_str().unwrap(),
-        &moltbot_pk,
-        &moltbot_address_bech32,
-    );
 
     // 4. Run Registration Script (Direct)
     println!("\n═══ Step 1: Moltbot Registration (Direct TX) ═══");
@@ -86,7 +74,7 @@ async fn test_moltbot_update_manifest() {
         .arg("run")
         .arg("register")
         .current_dir("../moltbot-starter-kit")
-        .env("MULTIVERSX_PRIVATE_KEY", pem_path.to_str().unwrap())
+        .env("MULTIVERSX_PRIVATE_KEY", pem_path.as_str())
         .env("MULTIVERSX_API_URL", &gateway_url)
         .env("IDENTITY_REGISTRY_ADDRESS", &registry_address)
         .env("MULTIVERSX_CHAIN_ID", &chain_id)
@@ -192,7 +180,7 @@ async fn test_moltbot_update_manifest() {
         .arg("run")
         .arg("update-manifest")
         .current_dir("../moltbot-starter-kit")
-        .env("MULTIVERSX_PRIVATE_KEY", pem_path.to_str().unwrap())
+        .env("MULTIVERSX_PRIVATE_KEY", pem_path.as_str())
         .env("MULTIVERSX_API_URL", &gateway_url)
         .env("IDENTITY_REGISTRY_ADDRESS", &registry_address)
         .env("MULTIVERSX_CHAIN_ID", &chain_id)
@@ -249,7 +237,6 @@ async fn test_moltbot_update_manifest() {
     println!("✅ get_agent: Agent data found after update");
 
     // 9. Cleanup
-    let _ = std::fs::remove_dir_all(&temp_dir);
-    let _ = std::fs::remove_file(&config_path); // cleanup agent.config.json
+    std::fs::remove_file(&config_path).ok(); // cleanup agent.config.json
     println!("✅ Suite E2 Complete: Moltbot direct registration + update manifest PASSED.");
 }

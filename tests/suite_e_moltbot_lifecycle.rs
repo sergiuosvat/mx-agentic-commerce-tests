@@ -8,7 +8,7 @@ use tokio::time::{sleep, Duration};
 mod common;
 use common::{
     wait_for_simulator_ready,
-    address_to_bech32, create_pem_file, generate_blocks_on_simulator, generate_random_private_key,
+    address_to_bech32, create_temp_pem_file, generate_blocks_on_simulator, generate_random_private_key,
     IdentityRegistryInteractor,
 };
 
@@ -65,16 +65,8 @@ async fn test_moltbot_lifecycle() {
     // Ensure cross-shard funding is settled
     generate_blocks_on_simulator(10, &gateway_url).await;
 
-    // Create PEM file
-    let project_root = std::env::current_dir().unwrap();
-    let pem_filename = format!("temp_moltbot_{}.pem", hex::encode(&moltbot_pk[0..4]));
-    let pem_path = project_root.join("tests").join(&pem_filename);
-    create_pem_file(
-        pem_path.to_str().unwrap(),
-        &moltbot_pk,
-        &moltbot_address_bech32,
-    );
-    println!("Created PEM at: {:?}", pem_path);
+    let pem_path = create_temp_pem_file("moltbot_lifecycle", &moltbot_pk, &moltbot_address_bech32);
+    println!("Created PEM at: {pem_path}");
 
     // 5. Run Registration Script (Direct Mode — wallet is funded)
     println!("\n═══ Running Moltbot Registration (Direct TX) ═══");
@@ -82,7 +74,7 @@ async fn test_moltbot_lifecycle() {
         .arg("run")
         .arg("register")
         .current_dir("../moltbot-starter-kit")
-        .env("MULTIVERSX_PRIVATE_KEY", pem_path.to_str().unwrap())
+        .env("MULTIVERSX_PRIVATE_KEY", pem_path.as_str())
         .env("MULTIVERSX_API_URL", &gateway_url)
         .env("IDENTITY_REGISTRY_ADDRESS", &registry_address)
         .env("MULTIVERSX_CHAIN_ID", &chain_id)
@@ -166,6 +158,5 @@ async fn test_moltbot_lifecycle() {
     );
 
     // 7. Cleanup
-    let _ = std::fs::remove_file(&pem_path);
     println!("✅ Suite E Complete: Moltbot direct registration PASSED.");
 }

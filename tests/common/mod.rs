@@ -8,9 +8,11 @@ use multiversx_sc_snippets::imports::*;
 
 pub mod escrow_interactor;
 pub mod mpp_session_mvx_proxy;
+pub mod services;
 pub mod simulator;
 pub mod test_env;
 pub use escrow_interactor::*;
+pub use services::*;
 pub use simulator::*;
 pub use test_env::TestEnv;
 
@@ -56,11 +58,11 @@ pub fn create_temp_pem_file(label: &str, private_key_hex: &str, address_bech32: 
         std::process::id()
     ));
     let path_str = path.to_string_lossy().into_owned();
-    create_pem_file(&path_str, private_key_hex, address_bech32);
+    create_pem_file(&path_str, private_key_hex);
     path_str
 }
 
-pub fn create_pem_file(file_path: &str, private_key_hex: &str, _address_bech32: &str) {
+pub fn create_pem_file(file_path: &str, private_key_hex: &str) {
     let priv_bytes = hex::decode(private_key_hex).expect("Invalid hex");
     let wallet = Wallet::from_private_key(private_key_hex).expect("Wallet failed");
     let address = wallet.to_address(); // multiversx_chain_core::types::Address
@@ -168,7 +170,7 @@ impl IdentityRegistryInteractor {
             .run()
             .await;
 
-        let _ = interactor.generate_blocks(3).await;
+        interactor.generate_blocks(3).await.ok();
         println!("Issued Token: {}", ticker);
     }
 
@@ -361,7 +363,6 @@ impl IdentityRegistryInteractor {
         &self,
         interactor: &mut Interactor,
         metadata: Vec<(&str, Vec<u8>)>,
-        _token_identifier: &str,
         nonce: u64,
     ) {
         let metadata_count = metadata.len() as u32;
@@ -401,7 +402,6 @@ impl IdentityRegistryInteractor {
         &self,
         interactor: &mut Interactor,
         keys: Vec<&str>,
-        _token_identifier: &str,
         nonce: u64,
     ) {
         let mut request = interactor
@@ -424,7 +424,6 @@ impl IdentityRegistryInteractor {
         &self,
         interactor: &mut Interactor,
         services: Vec<ServiceConfigInput<StaticApi>>,
-        _token_identifier: &str,
         nonce: u64,
     ) {
         let mut request = interactor
@@ -458,7 +457,6 @@ impl IdentityRegistryInteractor {
         &self,
         interactor: &mut Interactor,
         service_ids: Vec<u32>,
-        _token_identifier: &str,
         nonce: u64,
     ) {
         let mut request = interactor
@@ -823,7 +821,7 @@ pub async fn issue_fungible_esdt_custom(
         .await;
 
     println!("Issued ESDT {}...", ticker);
-    let _ = interactor.generate_blocks(15).await;
+    interactor.generate_blocks(15).await.ok();
 
     // Fetch token ID via HTTP API
     let issuer_bech32 = address_to_bech32(issuer);
@@ -836,7 +834,7 @@ pub async fn issue_fungible_esdt_custom(
         if let Ok(r) = resp {
             if let Ok(json) = r.json::<serde_json::Value>().await {
                 if let Some(tokens) = json["data"]["esdts"].as_object() {
-                    for (key, _val) in tokens {
+                    for key in tokens.keys() {
                         if key.starts_with(ticker) {
                             println!("Found Token: {}", key);
                             return key.clone();
@@ -845,7 +843,7 @@ pub async fn issue_fungible_esdt_custom(
                 }
             }
         }
-        let _ = interactor.generate_blocks(1).await;
+        interactor.generate_blocks(1).await.ok();
         tokio::time::sleep(std::time::Duration::from_secs(1)).await;
     }
 

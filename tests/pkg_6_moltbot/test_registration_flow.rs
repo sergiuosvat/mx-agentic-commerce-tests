@@ -1,27 +1,21 @@
+use crate::common::{
+    address_to_bech32, create_temp_pem_file, deploy_all_registries, fund_address_on_simulator,
+    generate_random_private_key, TestEnv,
+};
 use multiversx_sc_snippets::imports::*;
-use mx_agentic_commerce_tests::ProcessManager;
 use std::process::Command as SyncCommand;
 use tokio::time::{sleep, Duration};
-
-use crate::common::{
-    wait_for_simulator_ready,
-    address_to_bech32, create_pem_file, deploy_all_registries, fund_address_on_simulator,
-    generate_random_private_key,
-};
 
 /// Test that `npm run register` (Moltbot) creates an agent NFT on-chain.
 #[tokio::test]
 async fn test_registration_flow() {
-    let mut pm = ProcessManager::new();
-    let port = pm.start_chain_simulator()
-        .expect("Failed to start simulator");
-    let gateway_url = format!("http://localhost:{}", port);
-    wait_for_simulator_ready(&gateway_url).await;
+    let env = TestEnv::chain_only().await;
+    std::mem::forget(env.pm);
+    let mut interactor = env.interactor;
+    let gateway_url = env.gateway_url.clone();
+    let owner = env.owner.clone();
 
-    let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
     interactor.generate_blocks_until_all_activations().await;
-
-    let owner = interactor.register_wallet(test_wallets::alice()).await;
 
     // 1. Deploy Registries (Identity needed for register)
     let (identity, _, _) = deploy_all_registries(&mut interactor, owner.clone()).await;
@@ -32,22 +26,21 @@ async fn test_registration_flow() {
     let bot_pk = generate_random_private_key();
     let bot_wallet_obj = Wallet::from_private_key(&bot_pk).unwrap();
     let bot_bech32 = bot_wallet_obj.to_address().to_bech32("erd").to_string();
-    let _ = interactor.register_wallet(bot_wallet_obj).await;
+    interactor.register_wallet(bot_wallet_obj).await;
 
     println!("Bot Address: {}", bot_bech32);
 
     // Fund bot so it can call register_agent
     fund_address_on_simulator(&bot_bech32, "100000000000000000000", &gateway_url).await; // 100 EGLD
     for _ in 0..3 {
-        let _ = interactor.generate_blocks(1).await;
+        interactor.generate_blocks(1).await.ok();
         sleep(Duration::from_millis(300)).await;
     }
 
     // 3. Write PEM file for moltbot
     let project_root = std::env::current_dir().unwrap();
-    let pem_path = project_root.join("temp_moltbot_reg.pem");
-    create_pem_file(pem_path.to_str().unwrap(), &bot_pk, &bot_bech32);
-    println!("PEM created at: {}", pem_path.display());
+    let pem_path = create_temp_pem_file("moltbot_reg", &bot_pk, &bot_bech32);
+    println!("PEM created at: {pem_path}");
 
     // 4. Run moltbot `npm run register`
     let moltbot_dir = project_root.join("../moltbot-starter-kit");
@@ -59,7 +52,7 @@ async fn test_registration_flow() {
         .env("MULTIVERSX_API_URL", &gateway_url)
         .env("MULTIVERSX_CHAIN_ID", "chain")
         .env("IDENTITY_REGISTRY_ADDRESS", &identity_bech32)
-        .env("MULTIVERSX_PRIVATE_KEY", pem_path.to_str().unwrap())
+        .env("MULTIVERSX_PRIVATE_KEY", pem_path.as_str())
         .env("GAS_LIMIT_REGISTER_AGENT", "60000000")
         // Don't use relayer for this test
         .env("MULTIVERSX_RELAYER_URL", "http://localhost:99999")
@@ -80,7 +73,7 @@ async fn test_registration_flow() {
 
     // 5. Wait for tx processing
     for _ in 0..5 {
-        let _ = interactor.generate_blocks(1).await;
+        interactor.generate_blocks(1).await.ok();
         sleep(Duration::from_millis(300)).await;
     }
 
@@ -98,7 +91,6 @@ async fn test_registration_flow() {
     }
 
     // Cleanup
-    let _ = std::fs::remove_file(&pem_path);
 
     println!("=== Moltbot Registration Flow Complete ===");
 }
@@ -106,17 +98,13 @@ async fn test_registration_flow() {
 /// Test that a registered agent's NFT appears in the bot's account.
 #[tokio::test]
 async fn test_nft_in_bot_wallet() {
-    let mut pm = ProcessManager::new();
-    let port = pm.start_chain_simulator()
-        .expect("Failed to start simulator");
-    let gateway_url = format!("http://localhost:{}", port);
-    wait_for_simulator_ready(&gateway_url).await;
+    let env = TestEnv::chain_only().await;
+    std::mem::forget(env.pm);
+    let mut interactor = env.interactor;
+    let gateway_url = env.gateway_url.clone();
+    let owner = env.owner.clone();
 
-    let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
     interactor.generate_blocks_until_all_activations().await;
-
-    let owner = interactor.register_wallet(test_wallets::alice()).await;
-    let owner_bech32 = address_to_bech32(&owner);
 
     // Deploy registries
     let (identity, _, _) = deploy_all_registries(&mut interactor, owner.clone()).await;
@@ -132,9 +120,11 @@ async fn test_nft_in_bot_wallet() {
         .await;
 
     for _ in 0..5 {
-        let _ = interactor.generate_blocks(1).await;
+        interactor.generate_blocks(1).await.ok();
         sleep(Duration::from_millis(300)).await;
     }
+
+    let owner_bech32 = address_to_bech32(&owner);
 
     // Verify NFT in owner's wallet via API
     let client = reqwest::Client::new();

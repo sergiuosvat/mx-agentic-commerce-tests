@@ -6,7 +6,10 @@ use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::ChildStdout;
 use tokio::process::Command;
 mod common;
-use common::wait_for_simulator_ready;
+use common::{
+    address_to_bech32, create_temp_pem_file, fund_address_on_simulator, generate_random_private_key,
+    wait_for_simulator_ready,
+};
 // use common::GATEWAY_URL;
 
 async fn read_json_response(reader: &mut BufReader<ChildStdout>) -> String {
@@ -74,7 +77,7 @@ async fn call_tool(
     id: u64,
     tool_name: &str,
     arguments: Value,
-) -> (Value, String) {
+) -> String {
     let resp = mcp_call(
         stdin,
         reader,
@@ -89,16 +92,13 @@ async fn call_tool(
 
     // Check for errors
     if let Some(error) = resp.get("error") {
-        let error_str = format!("ERROR: {:?}", error);
-        return (resp, error_str);
+        return format!("ERROR: {:?}", error);
     }
 
-    let text = resp["result"]["content"][0]["text"]
+    resp["result"]["content"][0]["text"]
         .as_str()
         .unwrap_or("(no text)")
-        .to_string();
-
-    (resp, text)
+        .to_string()
 }
 
 /// Suite O: Comprehensive MCP Tool Coverage
@@ -122,9 +122,12 @@ async fn test_mcp_tool_coverage() {
 
     let chain_id = common::get_simulator_chain_id(&gateway_url).await;
 
-    // Use existing alice.pem from the test project root
-    let pem_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("alice.pem");
-    assert!(pem_path.exists(), "alice.pem not found at {:?}", pem_path);
+    let wallet_pk = generate_random_private_key();
+    let wallet = Wallet::from_private_key(&wallet_pk).unwrap();
+    let wallet_addr = wallet.to_address();
+    let wallet_bech32 = address_to_bech32(&wallet_addr);
+    fund_address_on_simulator(&wallet_bech32, "100000000000000000000000", &gateway_url).await;
+    let pem_path = create_temp_pem_file("mcp_suite_o", &wallet_pk, &wallet_bech32);
 
     // ── 2. Start MCP Server ──
     println!("Starting MCP Server...");
@@ -134,7 +137,7 @@ async fn test_mcp_tool_coverage() {
         .current_dir("../multiversx-mcp-server")
         .env("MVX_API_URL", &gateway_url)
         .env("MVX_NETWORK", "devnet")
-        .env("MVX_WALLET_PEM", pem_path.to_str().unwrap())
+        .env("MVX_WALLET_PEM", pem_path.as_str())
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::inherit())
@@ -152,7 +155,7 @@ async fn test_mcp_tool_coverage() {
 
     // ── Test 1: query-account ──
     println!("\n📋 Test 1: query-account");
-    let (_resp, text) = call_tool(
+    let text = call_tool(
         stdin,
         &mut reader,
         10,
@@ -173,7 +176,7 @@ async fn test_mcp_tool_coverage() {
     // because the MCP server uses the devnet chain ID ("D") while the simulator uses
     // a different chain ID. The tool still responds correctly — it just can't broadcast.
     println!("\n📋 Test 2: send-egld");
-    let (_resp, text) = call_tool(
+    let text = call_tool(
         stdin,
         &mut reader,
         11,
@@ -190,7 +193,7 @@ async fn test_mcp_tool_coverage() {
 
     // ── Test 3: issue-fungible-token ──
     println!("\n📋 Test 3: issue-fungible-token");
-    let (_resp, text) = call_tool(
+    let text = call_tool(
         stdin,
         &mut reader,
         12,
@@ -223,7 +226,7 @@ async fn test_mcp_tool_coverage() {
         "version": 2,
         "signature": "0".repeat(128)
     });
-    let (_resp, text) = call_tool(
+    let text = call_tool(
         stdin,
         &mut reader,
         13,
@@ -243,7 +246,7 @@ async fn test_mcp_tool_coverage() {
 
     // ── Test 5: create-purchase-transaction ──
     println!("\n📋 Test 5: create-purchase-transaction");
-    let (_resp, text) = call_tool(
+    let text = call_tool(
         stdin,
         &mut reader,
         14,
@@ -265,7 +268,7 @@ async fn test_mcp_tool_coverage() {
 
     // ── Test 6: search-products ──
     println!("\n📋 Test 6: search-products");
-    let (_resp, text) = call_tool(
+    let text = call_tool(
         stdin,
         &mut reader,
         15,

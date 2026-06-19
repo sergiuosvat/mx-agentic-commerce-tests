@@ -1,62 +1,24 @@
 use crate::common::{
-    wait_for_simulator_ready,
     create_pem_file, fund_address_on_simulator, generate_blocks_on_simulator,
-    generate_random_private_key, get_simulator_chain_id,
+    generate_random_private_key, get_simulator_chain_id, start_facilitator,
+    temp_relayer_wallets_dir, TestEnv, wait_for_simulator_ready,
 };
 use multiversx_sc_snippets::imports::*;
-use mx_agentic_commerce_tests::ProcessManager;
 use std::process::Command;
 use tokio::time::{sleep, Duration};
 
-const FACILITATOR_PORT: u16 = 3066;
-
-struct FacilitatorGuard {
-    child: std::process::Child,
-}
-
-impl Drop for FacilitatorGuard {
-    fn drop(&mut self) {
-        let _ = self.child.kill();
-        let _ = self.child.wait();
-        // Also kill any orphaned node processes on the port
-        let _ = Command::new("sh")
-            .arg("-c")
-            .arg(format!(
-                "lsof -ti :{} 2>/dev/null | xargs kill -9 2>/dev/null",
-                FACILITATOR_PORT
-            ))
-            .status();
-    }
-}
-
-fn kill_port(port: u16) {
-    let _ = Command::new("sh")
-        .arg("-c")
-        .arg(format!(
-            "lsof -ti :{} 2>/dev/null | xargs kill -9 2>/dev/null",
-            port
-        ))
-        .status();
-    std::thread::sleep(std::time::Duration::from_millis(500));
-}
-
 #[tokio::test]
 async fn test_relayed_v3_flow() {
-    // Pre-cleanup: kill any stale facilitator on our port
-    kill_port(FACILITATOR_PORT);
-
-    let mut pm = ProcessManager::new();
-    let sim_port = pm.start_chain_simulator().unwrap();
-    let gateway_url = format!("http://localhost:{}", sim_port);
-    wait_for_simulator_ready(&gateway_url).await;
-
-    let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
+    let env = TestEnv::chain_only().await;
+    let mut pm = env.pm;
+    let gateway_url = env.gateway_url.clone();
+    let mut interactor = env.interactor;
 
     // 1. Setup Actors
     let sender_pk = generate_random_private_key();
     let sender_wallet = Wallet::from_private_key(&sender_pk).unwrap();
     let sender_address = sender_wallet.to_address().to_bech32("erd").to_string();
-    let _ = interactor.register_wallet(sender_wallet).await;
+    interactor.register_wallet(sender_wallet).await;
 
     let receiver_pk = generate_random_private_key();
     let receiver_wallet = Wallet::from_private_key(&receiver_pk).unwrap();
@@ -67,11 +29,10 @@ async fn test_relayed_v3_flow() {
     fund_address_on_simulator(&sender_address, "500000000000000000000", &gateway_url).await; // 500 EGLD
 
     // 3. Generate multiple relayer wallets (covering all 3 shards)
-    let project_root = std::env::current_dir().unwrap();
-    let relayer_wallets_dir = project_root.join("test_relayers_v3");
-    let _ = std::fs::remove_dir_all(&relayer_wallets_dir);
+    let relayer_wallets_dir = std::path::PathBuf::from(temp_relayer_wallets_dir("v3"));
+    std::fs::remove_dir_all(&relayer_wallets_dir).ok();
     std::fs::create_dir_all(&relayer_wallets_dir).expect("Failed to create relayer wallets dir");
-    let relayer_wallets_dir_str = relayer_wallets_dir.to_str().unwrap().to_string();
+    let relayer_wallets_dir_str = relayer_wallets_dir.to_str().unwrap();
 
     println!(
         "Generating relayer wallets for all shards in {}...",
@@ -85,8 +46,8 @@ async fn test_relayed_v3_flow() {
         // Fund each relayer
         fund_address_on_simulator(&ra, "1000000000000000000", &gateway_url).await; // 1 EGLD
 
-        let pem_path = format!("{}/relayer_{}.pem", relayer_wallets_dir_str, i);
-        create_pem_file(&pem_path, &rk, &ra);
+        let pem_path = relayer_wallets_dir.join(format!("relayer_{i}.pem"));
+        create_pem_file(pem_path.to_str().unwrap(), &rk);
         println!("Generated Relayer {}: {}", i, ra);
     }
 
@@ -95,46 +56,24 @@ async fn test_relayed_v3_flow() {
 
     // 4. Start Facilitator with RELAYER_WALLETS_DIR
     let db_path = "./facilitator_relayed.db";
-    let _ = std::fs::remove_file(db_path);
-
     let chain_id = get_simulator_chain_id(&gateway_url).await;
+    let facilitator_pk = generate_random_private_key();
 
-    let facilitator_dir = std::path::Path::new("../x402_integration/x402_facilitator");
-    let child = Command::new("npx")
-        .arg("tsx")
-        .arg("src/index.ts")
-        .current_dir(facilitator_dir)
-        .env("PORT", FACILITATOR_PORT.to_string())
-        .env("PRIVATE_KEY", generate_random_private_key())
-        .env(
-            "REGISTRY_ADDRESS",
-            "erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu",
-        )
-        .env("NETWORK_PROVIDER", &gateway_url)
-        .env("GATEWAY_URL", &gateway_url)
-        .env("CHAIN_ID", &chain_id)
-        .env("SQLITE_DB_PATH", db_path)
-        .env("SKIP_SIMULATION", "false")
-        .env("RELAYER_WALLETS_DIR", &relayer_wallets_dir_str)
-        .spawn()
-        .expect("Failed to start facilitator");
+    let facilitator_url = start_facilitator(
+        &mut pm,
+        &facilitator_pk,
+        "erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu",
+        &gateway_url,
+        &chain_id,
+        &[
+            ("SQLITE_DB_PATH", db_path),
+            ("SKIP_SIMULATION", "false"),
+            ("RELAYER_WALLETS_DIR", relayer_wallets_dir_str),
+        ],
+    )
+    .await;
 
-    let facilitator_guard = FacilitatorGuard { child };
-
-    // Wait for facilitator to be ready
     let client = reqwest::Client::new();
-    let facilitator_url = format!("http://localhost:{}", FACILITATOR_PORT);
-    for _ in 0..20 {
-        if client
-            .get(format!("{}/health", facilitator_url))
-            .send()
-            .await
-            .is_ok()
-        {
-            break;
-        }
-        sleep(Duration::from_millis(500)).await;
-    }
 
     // 5. Wait for Epoch 1 (Relayed V3 enabled at epoch 1)
     // RoundsPerEpoch=20, so 25 blocks is enough
@@ -284,6 +223,5 @@ async fn test_relayed_v3_flow() {
     );
 
     // Cleanup
-    let _ = std::fs::remove_dir_all(&relayer_wallets_dir);
-    drop(facilitator_guard);
+    std::fs::remove_dir_all(&relayer_wallets_dir).ok();
 }

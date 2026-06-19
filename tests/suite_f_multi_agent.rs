@@ -8,13 +8,10 @@ use tokio::time::{sleep, Duration};
 mod common;
 use common::{
     wait_for_simulator_ready,
-    address_to_bech32, create_pem_file, fund_address_on_simulator, generate_blocks_on_simulator,
-    generate_random_private_key, IdentityRegistryInteractor,
+    address_to_bech32, create_temp_pem_file, fund_address_on_simulator, generate_blocks_on_simulator,
+    generate_random_private_key, start_facilitator,
+    IdentityRegistryInteractor,
 };
-
-const FACILITATOR_PORT: u16 = 3005;
-const SIM_URL: &str = "http://localhost:8085";
-const FACILITATOR_URL: &str = "http://localhost:3005";
 
 #[tokio::test]
 async fn test_multi_agent_payment_delegation() {
@@ -73,53 +70,37 @@ async fn test_multi_agent_payment_delegation() {
     sleep(Duration::from_millis(500)).await;
 
     // Save PEM for signing scripts
-    let project_root = std::env::current_dir().unwrap();
-    let temp_dir = project_root.join("tests").join("temp_multi_agent");
+    let temp_dir = std::path::PathBuf::from(format!("{}/mx-multi-agent-{}", std::env::temp_dir().display(), std::process::id()));
     if temp_dir.exists() {
         std::fs::remove_dir_all(&temp_dir).unwrap();
     }
     std::fs::create_dir_all(&temp_dir).unwrap();
 
-    let alice_pem = temp_dir.join("alice.pem");
-    create_pem_file(alice_pem.to_str().unwrap(), &alice_pk, &alice_addr);
+    let alice_pem = create_temp_pem_file("alice", &alice_pk, &alice_addr);
     let alice_pem_abs = fs::canonicalize(&alice_pem).expect("Failed to canonicalize alice pem");
 
     // 3. Deploy Registry & Register Bob
     let registry = IdentityRegistryInteractor::init(&mut interactor, admin.clone()).await;
     let registry_addr = address_to_bech32(registry.address());
 
-    let sim_url = SIM_URL;
-
     // 4. Start Facilitator
-    let env = vec![
-        ("PORT", "3005"),
-        ("NETWORK_PROVIDER", sim_url), // CRITICAL FIX: Point to Simulator
-        ("MULTIVERSX_API_URL", sim_url),
-        ("MX_PROXY_URL", sim_url),
-        (
-            "PRIVATE_KEY",
-            "e253a571ca153dc2aee845819f74bcc9773b0586edead15a94d728462b34ef8c",
-        ), // Random
-        ("REGISTRY_ADDRESS", &registry_addr),
-        ("CHAIN_ID", &chain_id), // Use dynamic ChainID
-        (
-            "MNEMONIC",
-            "moral volcano peasant pass circle pen over picture flat shop clap goat",
-        ), // Dummy
-        ("STORE_PATH", "tests/temp_multi_agent/facilitator.db"),
-        ("STORAGE_TYPE", "json"),
-        ("SKIP_SIMULATION", "false"),
-    ];
+    let facilitator_pk = generate_random_private_key();
+    let store_path = temp_dir.join("facilitator.db");
+    let store_path_str = store_path.to_str().unwrap().to_string();
 
-    pm.start_node_service(
-        "Facilitator",
-        "../x402_integration/x402_facilitator",
-        "dist/index.js",
-        env,
-        FACILITATOR_PORT,
+    let facilitator_url = start_facilitator(
+        &mut pm,
+        &facilitator_pk,
+        &registry_addr,
+        &gateway_url,
+        &chain_id,
+        &[
+            ("STORE_PATH", store_path_str.as_str()),
+            ("STORAGE_TYPE", "json"),
+            ("SKIP_SIMULATION", "false"),
+        ],
     )
-    .expect("Failed to start Facilitator");
-    wait_for_simulator_ready(&gateway_url).await;
+    .await;
 
     // 5. Execute Payment Flow (Alice -> Bob)
     let payment_value = "1000000000000000000"; // 1 EGLD
@@ -169,7 +150,7 @@ async fn test_multi_agent_payment_delegation() {
 
     println!("Sending Settle Request...");
     let res = client
-        .post(format!("{}/settle", FACILITATOR_URL))
+        .post(format!("{}/settle", facilitator_url))
         .json(&settle_req)
         .send()
         .await
@@ -187,7 +168,7 @@ async fn test_multi_agent_payment_delegation() {
     sleep(Duration::from_secs(5)).await; // Wait for processing
 
     let events_res = client
-        .get(format!("{}/events?unread=true", FACILITATOR_URL))
+        .get(format!("{}/events?unread=true", facilitator_url))
         .send()
         .await
         .expect("Failed to poll events");
@@ -210,5 +191,5 @@ async fn test_multi_agent_payment_delegation() {
     assert_eq!(event["amount"], payment_value);
 
     // Clean up
-    let _ = std::fs::remove_dir_all(&temp_dir);
+    std::fs::remove_dir_all(&temp_dir).ok();
 }

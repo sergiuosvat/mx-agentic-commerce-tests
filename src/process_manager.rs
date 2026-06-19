@@ -115,6 +115,7 @@ impl ProcessManager {
         Ok(port)
     }
 
+    /// Start a Node.js service. Pass `port = 0` to bind an ephemeral port (returned).
     pub fn start_node_service(
         &mut self,
         name: &str,
@@ -122,7 +123,29 @@ impl ProcessManager {
         script: &str,
         env: Vec<(&str, &str)>,
         port: u16,
-    ) -> Result<(), std::io::Error> {
+    ) -> Result<u16, std::io::Error> {
+        let owned: Vec<(String, String)> = env
+            .into_iter()
+            .map(|(k, v)| (k.to_string(), v.to_string()))
+            .collect();
+        self.start_node_service_owned(name, cwd, script, owned, port)
+    }
+
+    pub fn start_node_service_owned(
+        &mut self,
+        name: &str,
+        cwd: &str,
+        script: &str,
+        env: Vec<(String, String)>,
+        port: u16,
+    ) -> Result<u16, std::io::Error> {
+        let port = if port == 0 {
+            Self::find_free_port()
+        } else {
+            port
+        };
+        let port_str = port.to_string();
+
         println!("Starting {} on port {}...", name, port);
         let mut cmd = Command::new("node");
         cmd.current_dir(cwd)
@@ -130,15 +153,24 @@ impl ProcessManager {
             .stdout(Stdio::inherit())
             .stderr(Stdio::inherit());
 
+        let mut has_port = false;
         for (key, val) in env {
-            cmd.env(key, val);
+            if key == "PORT" {
+                has_port = true;
+                cmd.env("PORT", &port_str);
+            } else {
+                cmd.env(key, val);
+            }
+        }
+        if !has_port {
+            cmd.env("PORT", &port_str);
         }
 
         let child = cmd.spawn()?;
         self.children.push(child);
-        self.wait_for_port(port, 20);
-        println!("{} started.", name);
-        Ok(())
+        self.wait_for_port(port, 40);
+        println!("{} started on port {}.", name, port);
+        Ok(port)
     }
 
     fn wait_for_port(&self, port: u16, retries: u32) {
@@ -158,8 +190,8 @@ impl ProcessManager {
 impl Drop for ProcessManager {
     fn drop(&mut self) {
         for mut child in self.children.drain(..) {
-            let _ = child.kill();
-            let _ = child.wait();
+            child.kill().ok();
+            child.wait().ok();
         }
 
         // Removed global pkill that breaks parallel tests

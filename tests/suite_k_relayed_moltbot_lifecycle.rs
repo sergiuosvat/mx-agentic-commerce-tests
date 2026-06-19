@@ -8,14 +8,10 @@ use tokio::time::{sleep, Duration};
 mod common;
 use common::{
     wait_for_simulator_ready,
-    address_to_bech32, create_pem_file, fund_address_on_simulator, generate_blocks_on_simulator,
-    generate_random_private_key, IdentityRegistryInteractor,
+    address_to_bech32, create_pem_file, create_temp_pem_file, fund_address_on_simulator,
+    generate_blocks_on_simulator, generate_random_private_key, start_facilitator, start_relayer,
+    temp_relayer_wallets_dir, IdentityRegistryInteractor,
 };
-
-const RELAYER_PORT: u16 = 3003;
-const RELAYER_URL: &str = "http://localhost:3003";
-const FACILITATOR_PORT: u16 = 3005;
-const FACILITATOR_URL: &str = "http://localhost:3005";
 
 /// Suite K: Full Moltbot Lifecycle via Relayed Transactions
 ///
@@ -65,14 +61,13 @@ async fn test_relayed_moltbot_full_lifecycle() {
     fs::create_dir_all(&temp_dir).unwrap();
 
     // 3. Setup Relayer Wallets (shared by both services)
-    let relayer_wallets_dir = temp_dir.join("relayer_wallets");
+    let relayer_wallets_dir = std::path::PathBuf::from(temp_relayer_wallets_dir("suite_k"));
     fs::create_dir_all(&relayer_wallets_dir).unwrap();
 
     for i in 0..30 {
         let relayer_pk = generate_random_private_key();
         let relayer_wallet = Wallet::from_private_key(&relayer_pk).unwrap();
         let relayer_addr_obj = relayer_wallet.to_address();
-        let relayer_addr = relayer_addr_obj.to_bech32("erd").to_string();
         let relayer_sc_addr = Address::from_slice(relayer_addr_obj.as_bytes());
 
         interactor
@@ -83,57 +78,46 @@ async fn test_relayed_moltbot_full_lifecycle() {
             .run()
             .await;
 
-        let relayer_pem = relayer_wallets_dir.join(format!("relayer_{}.pem", i));
-        create_pem_file(relayer_pem.to_str().unwrap(), &relayer_pk, &relayer_addr);
+        let relayer_pem = relayer_wallets_dir.join(format!("relayer_{i}.pem"));
+        create_pem_file(
+            relayer_pem.to_str().unwrap(),
+            &relayer_pk,
+        );
     }
 
     // Ensure cross-shard EGLD transfers settle (30 wallets across 3 shards)
     generate_blocks_on_simulator(30, &gateway_url).await;
 
     // 4. Start OpenClaw Relayer
-    let relayer_env = vec![
-        ("NETWORK_PROVIDER", gateway_url.as_str()),
-        ("IDENTITY_REGISTRY_ADDRESS", registry_addr.as_str()),
-        ("RELAYER_WALLETS_DIR", relayer_wallets_dir.to_str().unwrap()),
-        ("PORT", "3003"),
-        ("CHAIN_ID", chain_id.as_str()),
-        ("IS_TEST_ENV", "true"),
-        ("SKIP_SIMULATION", "false"),
-    ];
-
-    pm.start_node_service(
-        "Relayer",
-        "../x402_integration/multiversx-openclaw-relayer",
-        "dist/index.js",
-        relayer_env,
-        RELAYER_PORT,
+    let relayer_url = start_relayer(
+        &mut pm,
+        &gateway_url,
+        &registry_addr,
+        relayer_wallets_dir.to_str().unwrap(),
+        &chain_id,
+        &[],
     )
-    .expect("Failed to start Relayer");
+    .await;
 
     // 5. Start Facilitator
     let store_path = temp_dir.join("facilitator.db");
-    let facilitator_env = vec![
-        ("PORT", "3005"),
-        ("NETWORK_PROVIDER", gateway_url.as_str()),
-        ("MULTIVERSX_API_URL", gateway_url.as_str()),
-        ("MX_PROXY_URL", gateway_url.as_str()),
-        ("REGISTRY_ADDRESS", registry_addr.as_str()),
-        ("CHAIN_ID", chain_id.as_str()),
-        ("RELAYER_WALLETS_DIR", relayer_wallets_dir.to_str().unwrap()),
-        ("STORAGE_TYPE", "json"),
-        ("STORE_PATH", store_path.to_str().unwrap()),
-        ("SKIP_SIMULATION", "false"),
-    ];
+    let store_path_str = store_path.to_str().unwrap().to_string();
+    let facilitator_pk = generate_random_private_key();
 
-    pm.start_node_service(
-        "Facilitator",
-        "../x402_integration/x402_facilitator",
-        "dist/index.js",
-        facilitator_env,
-        FACILITATOR_PORT,
+    let facilitator_url = start_facilitator(
+        &mut pm,
+        &facilitator_pk,
+        &registry_addr,
+        &gateway_url,
+        &chain_id,
+        &[
+            ("RELAYER_WALLETS_DIR", relayer_wallets_dir.to_str().unwrap()),
+            ("STORAGE_TYPE", "json"),
+            ("STORE_PATH", store_path_str.as_str()),
+            ("SKIP_SIMULATION", "false"),
+        ],
     )
-    .expect("Failed to start Facilitator");
-    wait_for_simulator_ready(&gateway_url).await;
+    .await;
 
     // ────────────────────────────────────
     // PHASE A: Bot Registration via Relayer
@@ -145,19 +129,18 @@ async fn test_relayed_moltbot_full_lifecycle() {
     let bot_addr = bot_wallet.to_address().to_bech32("erd").to_string();
     println!("Bot Address (UNFUNDED): {}", bot_addr);
 
-    let bot_pem = temp_dir.join("bot.pem");
-    create_pem_file(bot_pem.to_str().unwrap(), &bot_pk, &bot_addr);
+    let bot_pem = create_temp_pem_file("bot", &bot_pk, &bot_addr);
 
     let reg_output = std::process::Command::new("npm")
         .arg("run")
         .arg("register")
         .current_dir("../moltbot-starter-kit")
-        .env("MULTIVERSX_PRIVATE_KEY", bot_pem.to_str().unwrap())
+        .env("MULTIVERSX_PRIVATE_KEY", bot_pem.as_str())
         .env("MULTIVERSX_API_URL", &gateway_url)
         .env("IDENTITY_REGISTRY_ADDRESS", &registry_addr)
         .env("CHAIN_ID", &chain_id)
         .env("MULTIVERSX_CHAIN_ID", &chain_id)
-        .env("MULTIVERSX_RELAYER_URL", RELAYER_URL)
+        .env("MULTIVERSX_RELAYER_URL", &relayer_url)
         .env("FORCE_RELAYER", "true")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -199,8 +182,7 @@ async fn test_relayed_moltbot_full_lifecycle() {
         .run()
         .await;
 
-    let buyer_pem = temp_dir.join("buyer.pem");
-    create_pem_file(buyer_pem.to_str().unwrap(), &buyer_pk, &buyer_addr);
+    let buyer_pem = create_temp_pem_file("buyer", &buyer_pk, &buyer_addr);
     let buyer_pem_abs = fs::canonicalize(&buyer_pem).expect("Failed to canonicalize");
 
     // Get relayer address for buyer's shard from facilitator
@@ -208,7 +190,7 @@ async fn test_relayed_moltbot_full_lifecycle() {
     let relayer_res = client
         .get(format!(
             "{}/relayer/address/{}",
-            FACILITATOR_URL, buyer_addr
+            facilitator_url, buyer_addr
         ))
         .send()
         .await
@@ -257,7 +239,7 @@ async fn test_relayed_moltbot_full_lifecycle() {
     });
 
     let res = client
-        .post(format!("{}/settle", FACILITATOR_URL))
+        .post(format!("{}/settle", facilitator_url))
         .json(&settle_req)
         .send()
         .await
@@ -276,7 +258,7 @@ async fn test_relayed_moltbot_full_lifecycle() {
     wait_for_simulator_ready(&gateway_url).await;
 
     let events_res = client
-        .get(format!("{}/events?unread=true", FACILITATOR_URL))
+        .get(format!("{}/events?unread=true", facilitator_url))
         .send()
         .await
         .expect("Failed to get events");
@@ -287,6 +269,7 @@ async fn test_relayed_moltbot_full_lifecycle() {
     println!("✅ Events found: {}", events_arr.len());
 
     // Cleanup
-    let _ = fs::remove_dir_all(&temp_dir);
+    fs::remove_dir_all(&temp_dir).ok();
+    fs::remove_dir_all(&relayer_wallets_dir).ok();
     println!("✅ Suite K Complete: Full Moltbot lifecycle via Relayed V3 passed.");
 }

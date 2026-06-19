@@ -54,8 +54,19 @@ tests/
   pkg_1–9/          Chain-focused tests by component
   suite_a–z/        Cross-service integration flows
   fixtures/         TypeScript test fixtures (MPP middleware)
-  mpp-e2e.test.ts   MCP 402 / payment flow tests
+  mpp-402.test.ts   MCP 402 challenge (unit, no chain)
+  mpp-payment.test.ts  On-chain MPP payment (RUN_CHAIN_TESTS=1)
 ```
+
+### Package vs suite tests
+
+| Layer | Targets | Purpose |
+|-------|---------|---------|
+| **pkg_1–9** | `cargo test --test pkg_*` | Chain-only, contract-focused regression |
+| **suite_a–z** | `cargo test --test suite_*` | Cross-service flows (facilitator, relayer, MCP, MPP) |
+| **session** | `suite_session_simulator` | Simulator session helpers |
+
+Default `./run_all_tests.sh` runs suites only; use `--pkg` or `--all` for package tests.
 
 ### TestEnv harness
 

@@ -95,6 +95,57 @@ graph TD
 4.  **MCP Feature Tests**: Implement `suite_g_mcp_features.rs` to iterate through all MCP-0xx scenarios.
 
 ## 4. Verification
-- `cargo test --test moltbot_lifecycle`
-- `cargo test --test multi_agent`
-- `cargo test --test mcp_features`
+- `./run_all_tests.sh` — default tier (MPP unit + suites A–T/Z/session + off-chain U–Y)
+- `./run_all_tests.sh --pkg` — chain-only package tests (`pkg_1`–`pkg_9`)
+- `cargo itest --test pkg_1_identity` — smoke tier (single package)
+- `npm run test:unit` / `RUN_CHAIN_TESTS=1 npm run test:chain` — MPP TypeScript
+
+---
+
+## 5. Current Test Map (2026)
+
+### Rust packages (`tests/pkg_*`)
+
+| Target | Focus |
+|--------|--------|
+| `pkg_1_identity` | Agent registration, metadata, tokens, service configs |
+| `pkg_2_validation` | Job lifecycle, payments, `clean_old_jobs` (incl. boundary) |
+| `pkg_3_reputation` | Feedback, averaging, direct feedback |
+| `pkg_4_facilitator` | EGLD/ESDT verify & settle, idempotency, relayed v3 |
+| `pkg_5_mcp` | MCP balance, registry, transfer tools |
+| `pkg_6_moltbot` | Registration and gasless flows |
+| `pkg_7_e2e` | Gasless end-to-end |
+| `pkg_8_escrow` | Deposit, release, refund, multi-job |
+| `pkg_9_escrow_lifecycle` | Cascading escrow |
+
+### Rust suites (`tests/suite_*`)
+
+| Target | Focus |
+|--------|--------|
+| `suite_a`–`d` | Identity, validation, reputation, facilitator smoke |
+| `suite_e`–`k` | Moltbot lifecycle, relayed ops, facilitator settle |
+| `suite_l`–`t` | MCP discovery, agent-to-agent, extended MCP |
+| `suite_u`–`y` | Facilitator/relayer advanced, E2E flows |
+| `suite_z` | MPP + facilitator integration |
+| `suite_session_simulator` | Simulator session helpers |
+
+### TypeScript
+
+| File | When to run |
+|------|-------------|
+| `tests/mpp-402.test.ts` | Always (402 challenge, no chain) |
+| `tests/mpp-payment.test.ts` | `RUN_CHAIN_TESTS=1` + funded test keys |
+
+### Shared harness (`tests/common/`)
+
+- `simulator.rs` — readiness polling, block generation, time advance
+- `test_env.rs` — `TestEnv::chain_only()`, `with_registries()`, etc.
+- `services.rs` — `start_facilitator()` on dynamic port
+- PEM files use `create_temp_pem_file()` (system temp dir, not repo root)
+
+### CI tiers
+
+| Workflow | Scope |
+|----------|--------|
+| `test-smoke.yml` | MPP unit + `pkg_1_identity` + `suite_d_facilitator` |
+| `test-nightly.yml` | Full `run_all_tests.sh` with `FAIL_ON_RETRY=1` |

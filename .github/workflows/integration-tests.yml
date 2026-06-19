@@ -1,0 +1,50 @@
+name: Integration Tests
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Install Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.22'
+
+      - name: Install sc-meta
+        run: cargo install multiversx-sc-meta --locked
+
+      - name: Setup ecosystem
+        run: ./setup.sh
+
+      - name: Run full test suite
+        run: ./run_all_tests.sh --all
+        env:
+          FAIL_ON_RETRY: 1
+
+      - name: Upload test logs on failure
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-logs
+          path: target/test-logs/
+          retention-days: 7

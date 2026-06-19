@@ -1,38 +1,14 @@
-use crate::common::{
-    wait_for_simulator_ready,
-    create_pem_file, fund_address_on_simulator, generate_random_private_key,
-    IdentityRegistryInteractor,
-};
+use crate::common::{IdentityRegistryInteractor, TestEnv};
 use identity_registry_interactor::identity_registry_proxy::IdentityRegistryProxy;
-use multiversx_sc::types::{ManagedBuffer, TokenIdentifier};
+use multiversx_sc::types::ManagedBuffer;
 use multiversx_sc_snippets::imports::*;
-use mx_agentic_commerce_tests::ProcessManager;
-
 
 #[tokio::test]
 async fn test_metadata_ops() {
-    let mut pm = ProcessManager::new();
-    let port = pm.start_chain_simulator()
-        .expect("Failed to start simulator");
-    let gateway_url = format!("http://localhost:{}", port);
-
-    wait_for_simulator_ready(&gateway_url).await;
-
-
-    let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
-
-    let alice_private_key = generate_random_private_key();
-    let alice_wallet = Wallet::from_private_key(&alice_private_key).unwrap();
-    let alice_address = alice_wallet.to_address();
-    create_pem_file(
-        "alice_meta.pem",
-        &alice_private_key,
-        &alice_address.to_bech32("erd").to_string(),
-    );
-
-    interactor.register_wallet(alice_wallet).await;
-    let wallet_bech32 = alice_address.to_bech32("erd").to_string();
-    fund_address_on_simulator(&wallet_bech32, "100000000000000000000000", &gateway_url).await;
+    let env = TestEnv::chain_only().await;
+    std::mem::forget(env.pm);
+    let mut interactor = env.interactor;
+    let alice_address = env.owner.clone();
 
     let identity_interactor =
         IdentityRegistryInteractor::init(&mut interactor, alice_address.clone()).await;
@@ -45,16 +21,6 @@ async fn test_metadata_ops() {
 
     let address = identity_interactor.address().clone();
 
-    let token_id: TokenIdentifier<StaticApi> = interactor
-        .query()
-        .to(&address)
-        .typed(IdentityRegistryProxy)
-        .agent_token_id()
-        .returns(ReturnsResult)
-        .run()
-        .await;
-    let token_str = token_id.to_string();
-
     // 1. Set Metadata (3 items)
     let meta1 = vec![
         ("key1", b"val1".to_vec()),
@@ -62,7 +28,7 @@ async fn test_metadata_ops() {
         ("key3", b"val3".to_vec()),
     ];
     identity_interactor
-        .set_metadata(&mut interactor, meta1, &token_str, 1)
+        .set_metadata(&mut interactor, meta1, 1)
         .await;
 
     // Verify key1
@@ -79,7 +45,7 @@ async fn test_metadata_ops() {
     // 2. Overwrite key2
     let meta2 = vec![("key2", b"val2_updated".to_vec())];
     identity_interactor
-        .set_metadata(&mut interactor, meta2, &token_str, 1)
+        .set_metadata(&mut interactor, meta2, 1)
         .await;
 
     let val2_opt: OptionalValue<ManagedBuffer<StaticApi>> = interactor
@@ -94,7 +60,7 @@ async fn test_metadata_ops() {
 
     // 3. Remove key3
     identity_interactor
-        .remove_metadata(&mut interactor, vec!["key3"], &token_str, 1)
+        .remove_metadata(&mut interactor, vec!["key3"], 1)
         .await;
 
     let val3_opt: OptionalValue<ManagedBuffer<StaticApi>> = interactor

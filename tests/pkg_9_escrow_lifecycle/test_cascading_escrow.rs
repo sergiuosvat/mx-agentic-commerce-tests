@@ -1,9 +1,8 @@
 use multiversx_sc::types::ManagedBuffer;
 use multiversx_sc_snippets::imports::*;
-use mx_agentic_commerce_tests::ProcessManager;
 
-use crate::common::{
-    deploy_all_registries, vm_query, EscrowInteractor, EscrowStatus, wait_for_simulator_ready,
+use crate::common::{TestEnv, 
+    deploy_all_registries, vm_query, EscrowInteractor, EscrowStatus,
 };
 
 /// T-003: Agent-to-Agent Cascading Escrow
@@ -13,13 +12,9 @@ use crate::common::{
 /// Both get feedback, all states verified
 #[tokio::test]
 async fn test_cascading_escrow_chain() {
-    let mut pm = ProcessManager::new();
-    let port = pm.start_chain_simulator()
-        .expect("Failed to start simulator");
-    let gateway_url = format!("http://localhost:{}", port);
-    wait_for_simulator_ready(&gateway_url).await;
-
-    let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
+    let env = TestEnv::chain_only().await;
+    std::mem::forget(env.pm);
+    let mut interactor = env.interactor;
 
     let alice = interactor.register_wallet(test_wallets::alice()).await;
     let bob = interactor.register_wallet(test_wallets::bob()).await;

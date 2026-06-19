@@ -8,8 +8,8 @@
   },
   "scripts": {
     "test": "vitest run",
-    "test:unit": "vitest run tests/mpp-e2e.test.ts",
-    "test:chain": "RUN_CHAIN_TESTS=1 vitest run tests/mpp-e2e.test.ts"
+    "test:unit": "vitest run tests/mpp-402.test.ts",
+    "test:chain": "RUN_CHAIN_TESTS=1 vitest run tests/mpp-payment.test.ts"
   },
   "repository": {
     "type": "git",

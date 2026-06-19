@@ -1,28 +1,17 @@
 use crate::common::{
-    create_pem_file, fund_address_on_simulator, generate_random_private_key,
-    EscrowInteractor, IdentityRegistryInteractor, ValidationRegistryInteractor,
+    fund_address_on_simulator, generate_random_private_key, EscrowInteractor,
+    IdentityRegistryInteractor, TestEnv, ValidationRegistryInteractor,
 };
 use multiversx_sc_snippets::imports::*;
-use mx_agentic_commerce_tests::ProcessManager;
-use tokio::time::{sleep, Duration};
-
 
 /// S-005: Deposit → unauthorized release attempt → expect error
 #[tokio::test]
 async fn test_escrow_unauthorized_release() {
-    let mut process_manager = ProcessManager::new();
-    let port = process_manager
-        .start_chain_simulator()
-        .expect("Failed to start simulator");
-    let gateway_url = format!("http://localhost:{}", port);
-    sleep(Duration::from_secs(3)).await;
-
-    let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
-
-    // 1. Setup: owner deposits, attacker tries to release
-    let owner_key = generate_random_private_key();
-    let owner_wallet = Wallet::from_private_key(&owner_key).unwrap();
-    let owner_address = owner_wallet.to_address();
+    let env = TestEnv::chain_only().await;
+    std::mem::forget(env.pm);
+    let mut interactor = env.interactor;
+    let gateway_url = env.gateway_url.clone();
+    let owner_address = env.owner.clone();
 
     let attacker_key = generate_random_private_key();
     let attacker_wallet = Wallet::from_private_key(&attacker_key).unwrap();
@@ -31,23 +20,9 @@ async fn test_escrow_unauthorized_release() {
     let receiver_key = generate_random_private_key();
     let receiver_wallet = Wallet::from_private_key(&receiver_key).unwrap();
     let receiver_address = receiver_wallet.to_address();
-
-    let pem_path = "test_escrow_unauth.pem";
-    create_pem_file(
-        pem_path,
-        &owner_key,
-        &owner_address.to_bech32("erd").to_string(),
-    );
-    interactor.register_wallet(owner_wallet).await;
     interactor.register_wallet(attacker_wallet).await;
     interactor.register_wallet(receiver_wallet).await;
 
-    fund_address_on_simulator(
-        &owner_address.to_bech32("erd").to_string(),
-        "100000000000000000000000",
-        &gateway_url,
-    )
-    .await;
     fund_address_on_simulator(
         &attacker_address.to_bech32("erd").to_string(),
         "10000000000000000000",
@@ -106,6 +81,4 @@ async fn test_escrow_unauthorized_release() {
         .await;
 
     println!("✅ S-005 PASSED: Unauthorized release correctly rejected");
-
-    std::fs::remove_file(pem_path).unwrap_or(());
 }

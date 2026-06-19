@@ -5,13 +5,12 @@ use tokio::time::{sleep, Duration};
 mod common;
 use common::{
     wait_for_simulator_ready,
-    address_to_bech32, fund_address_on_simulator, generate_blocks_on_simulator,
-    generate_random_private_key, get_simulator_chain_id,
+    address_to_bech32, create_pem_file, fund_address_on_simulator, generate_blocks_on_simulator,
+    generate_random_private_key, get_simulator_chain_id, start_facilitator, start_relayer,
+    temp_relayer_wallets_dir,
 };
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
-
-const FACILITATOR_PORT: u16 = 3095;
 
 /// Suite Y: Cross-Component E2E Flows
 ///
@@ -32,12 +31,9 @@ async fn test_e2e_flows() {
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
 
     // ── 2. Setup Wallets ──
-    let pem_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("alice.pem");
-    let alice_bech32 = "erd1qyu5wthldzr8wx5c9ucg8kjagg0jfs53s8nr3zpz3hypefsdd8ssycr6th";
-    fund_address_on_simulator(alice_bech32, "100000000000000000000000", &gateway_url).await;
-
-    let alice_wallet = Wallet::from_pem_file(pem_path.to_str().unwrap()).expect("PEM load");
-    let alice_addr = interactor.register_wallet(alice_wallet).await;
+    let alice_addr = interactor.register_wallet(test_wallets::alice()).await;
+    let alice_bech32 = address_to_bech32(&alice_addr);
+    fund_address_on_simulator(&alice_bech32, "100000000000000000000000", &gateway_url).await;
 
     // ── 3. Deploy All Registries ──
     let (identity, ..) =
@@ -79,44 +75,23 @@ async fn test_e2e_flows() {
 
     // ── 5. Start Facilitator ──
     let facilitator_pk = generate_random_private_key();
-    let fac_port_str = FACILITATOR_PORT.to_string();
     let fac_db = "./facilitator_suite_y.db";
-    let _ = std::fs::remove_file(fac_db);
 
-    pm.start_node_service(
-        "FacilitatorY",
-        "../x402_integration/x402_facilitator",
-        "dist/index.js",
-        vec![
-            ("PORT", fac_port_str.as_str()),
-            ("PRIVATE_KEY", facilitator_pk.as_str()),
-            ("REGISTRY_ADDRESS", identity_bech32.as_str()),
+    let facilitator_url = start_facilitator(
+        &mut pm,
+        &facilitator_pk,
+        &identity_bech32,
+        &gateway_url,
+        &chain_id,
+        &[
             ("IDENTITY_REGISTRY_ADDRESS", identity_bech32.as_str()),
-            ("NETWORK_PROVIDER", gateway_url.as_str()),
-            ("GATEWAY_URL", gateway_url.as_str()),
-            ("CHAIN_ID", chain_id.as_str()),
             ("SQLITE_DB_PATH", fac_db),
             ("SKIP_SIMULATION", "false"),
         ],
-        FACILITATOR_PORT,
     )
-    .expect("Failed to start facilitator");
+    .await;
 
     let client = reqwest::Client::new();
-    let facilitator_url = format!("http://localhost:{}", FACILITATOR_PORT);
-
-    // Wait for facilitator
-    for _ in 0..15 {
-        if client
-            .get(format!("{}/health", facilitator_url))
-            .send()
-            .await
-            .is_ok()
-        {
-            break;
-        }
-        sleep(Duration::from_millis(500)).await;
-    }
 
     // ══════════════════════════════════════════════════
     // E2E Flow 1: Agent-to-Agent Payment via MCP
@@ -264,12 +239,8 @@ async fn test_e2e_flows() {
     // NOTE: NOT funding this wallet — testing gasless flow
 
     // Try relayed registration (requires relayer running)
-    let relayer_port: u16 = 3096;
-    let relayer_port_str = relayer_port.to_string();
-
-    // Create temp relayer wallets dir
-    let relayer_wallets_dir = format!("{}/tmp_relayer_y", env!("CARGO_MANIFEST_DIR"));
-    let _ = std::fs::create_dir_all(&relayer_wallets_dir);
+    let relayer_wallets_dir = std::path::PathBuf::from(temp_relayer_wallets_dir("relayer_y"));
+    std::fs::create_dir_all(&relayer_wallets_dir).unwrap();
 
     // Fund 5 relayer wallets
     for i in 0..5 {
@@ -279,51 +250,21 @@ async fn test_e2e_flows() {
         let rb = address_to_bech32(&rw_addr);
         fund_address_on_simulator(&rb, "5000000000000000000", &gateway_url).await;
 
-        let pem_content = format!(
-            "-----BEGIN PRIVATE KEY for {}-----\n{}\n-----END PRIVATE KEY for {}-----",
-            rb,
-            hex::encode(rk.as_bytes()),
-            rb
-        );
-        std::fs::write(
-            format!("{}/relayer_{}.pem", relayer_wallets_dir, i),
-            pem_content,
-        )
-        .ok();
+        let pem_path = relayer_wallets_dir.join(format!("relayer_{i}.pem"));
+        create_pem_file(pem_path.to_str().unwrap(), &rk);
     }
 
     generate_blocks_on_simulator(10, &gateway_url).await;
 
-    pm.start_node_service(
-        "RelayerY",
-        "../x402_integration/multiversx-openclaw-relayer",
-        "dist/index.js",
-        vec![
-            ("PORT", relayer_port_str.as_str()),
-            ("NETWORK_PROVIDER", gateway_url.as_str()),
-            ("IDENTITY_REGISTRY_ADDRESS", identity_bech32.as_str()),
-            ("RELAYER_WALLETS_DIR", relayer_wallets_dir.as_str()),
-            ("CHAIN_ID", chain_id.as_str()),
-            ("IS_TEST_ENV", "true"),
-            ("SKIP_SIMULATION", "false"),
-            ("LOG_LEVEL", "warn"),
-        ],
-        relayer_port,
+    let relayer_url = start_relayer(
+        &mut pm,
+        &gateway_url,
+        &identity_bech32,
+        relayer_wallets_dir.to_str().unwrap(),
+        &chain_id,
+        &[("LOG_LEVEL", "warn")],
     )
-    .expect("Failed to start relayer");
-
-    // Wait for relayer
-    for _ in 0..15 {
-        if client
-            .get(format!("http://localhost:{}/health", relayer_port))
-            .send()
-            .await
-            .is_ok()
-        {
-            break;
-        }
-        sleep(Duration::from_millis(500)).await;
-    }
+    .await;
 
     // Register unfunded bot via relayer
     let gasless_register = Command::new("npx")
@@ -333,10 +274,7 @@ async fn test_e2e_flows() {
         .env("MULTIVERSX_API_URL", &gateway_url)
         .env("IDENTITY_REGISTRY_ADDRESS", &identity_bech32)
         .env("MULTIVERSX_CHAIN_ID", &chain_id)
-        .env(
-            "MULTIVERSX_RELAYER_URL",
-            format!("http://localhost:{}", relayer_port),
-        )
+        .env("MULTIVERSX_RELAYER_URL", &relayer_url)
         .env("FORCE_RELAYER", "true")
         .env("AGENT_NAME", "GaslessBot")
         .env("AGENT_URI", "https://gasless-bot.test/manifest")
@@ -422,8 +360,7 @@ async fn test_e2e_flows() {
     }
 
     // Cleanup
-    let _ = std::fs::remove_file(fac_db);
-    let _ = std::fs::remove_dir_all(&relayer_wallets_dir);
+    std::fs::remove_dir_all(&relayer_wallets_dir).ok();
     println!("\n✅ Suite Y: E2E Flows — COMPLETED");
     println!("  Tested: Agent-to-Agent (discovery→trust→pay→verify),");
     println!("          Gasless lifecycle (register→pay)");

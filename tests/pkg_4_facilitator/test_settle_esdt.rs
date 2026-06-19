@@ -1,23 +1,20 @@
 use crate::common::{
-    wait_for_simulator_ready,
-    fund_address_on_simulator, generate_blocks_on_simulator, generate_random_private_key,
-    get_simulator_chain_id, issue_fungible_esdt,
+    address_to_bech32, fund_address_on_simulator, generate_blocks_on_simulator,
+    generate_random_private_key, get_simulator_chain_id, issue_fungible_esdt,
+    start_facilitator, IdentityRegistryInteractor, TestEnv, wait_for_simulator_ready,
 };
 use multiversx_sc_snippets::imports::*;
-use mx_agentic_commerce_tests::ProcessManager;
 use std::process::Command;
 use tokio::time::{sleep, Duration};
 
-const FACILITATOR_PORT: u16 = 3046;
+const ESDT_DB_PATH: &str = "./facilitator_esdt.db";
 
 #[tokio::test]
 async fn test_settle_esdt() {
-    let mut pm = ProcessManager::new();
-    let sim_port = pm.start_chain_simulator().unwrap();
-    let gateway_url = format!("http://localhost:{}", sim_port);
-    wait_for_simulator_ready(&gateway_url).await;
-
-    let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
+    let env = TestEnv::chain_only().await;
+    let mut pm = env.pm;
+    let gateway_url = env.gateway_url.clone();
+    let mut interactor = env.interactor;
 
     let sender_pk = generate_random_private_key();
     let sender_wallet = Wallet::from_private_key(&sender_pk).unwrap();
@@ -52,47 +49,23 @@ async fn test_settle_esdt() {
     // 3. Start Facilitator
     let chain_id = get_simulator_chain_id(&gateway_url).await;
     let facilitator_pk = generate_random_private_key();
-    let db_path = "./facilitator_esdt.db";
-    let _ = std::fs::remove_file(db_path);
-    let facilitator_port = FACILITATOR_PORT;
-    let port_str = facilitator_port.to_string();
-    let env_vars = vec![
-        ("PORT", port_str.as_str()),
-        ("PRIVATE_KEY", facilitator_pk.as_str()),
-        (
-            "REGISTRY_ADDRESS",
-            "erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu",
-        ),
-        ("NETWORK_PROVIDER", gateway_url.as_str()),
-        ("GATEWAY_URL", gateway_url.as_str()),
-        ("CHAIN_ID", chain_id.as_str()),
-        ("SQLITE_DB_PATH", db_path),
-        ("SKIP_SIMULATION", "false"),
-    ];
+    let identity = IdentityRegistryInteractor::init(&mut interactor, sender_sc_address.clone()).await;
+    let registry_address = address_to_bech32(identity.address());
 
-    pm.start_node_service(
-        "Facilitator",
-        "../x402_integration/x402_facilitator",
-        "dist/index.js",
-        env_vars,
-        facilitator_port,
+    let facilitator_url = start_facilitator(
+        &mut pm,
+        &facilitator_pk,
+        &registry_address,
+        &gateway_url,
+        &chain_id,
+        &[
+            ("SQLITE_DB_PATH", ESDT_DB_PATH),
+            ("SKIP_SIMULATION", "false"),
+        ],
     )
-    .expect("Failed to start facilitator");
+    .await;
 
-    // Give it time to start
     let client = reqwest::Client::new();
-    let facilitator_url = format!("http://localhost:{}", facilitator_port);
-    for _ in 0..10 {
-        if client
-            .get(format!("{}/health", facilitator_url))
-            .send()
-            .await
-            .is_ok()
-        {
-            break;
-        }
-        sleep(Duration::from_millis(500)).await;
-    }
 
     // 4. Sign ESDT Transaction
 

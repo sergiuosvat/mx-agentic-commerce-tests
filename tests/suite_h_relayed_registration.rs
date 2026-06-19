@@ -4,9 +4,10 @@ use std::process::Stdio;
 
 mod common;
 use common::{
+    start_relayer, temp_relayer_wallets_dir,
     wait_for_simulator_ready,
-    address_to_bech32, create_pem_file, generate_blocks_on_simulator, generate_random_private_key,
-    IdentityRegistryInteractor,
+    address_to_bech32, create_pem_file, create_temp_pem_file, generate_blocks_on_simulator,
+    generate_random_private_key, IdentityRegistryInteractor,
 };
 
 #[tokio::test]
@@ -33,8 +34,7 @@ async fn test_relayed_registration() {
         .await;
 
     // Setup Relayer Wallets (Generate multiple to cover all shards)
-    let project_root = std::env::current_dir().unwrap();
-    let relayer_wallets_dir = project_root.join("tests").join("temp_relayer_wallets");
+    let relayer_wallets_dir = std::path::PathBuf::from(temp_relayer_wallets_dir("relayed"));
 
     if relayer_wallets_dir.exists() {
         std::fs::remove_dir_all(&relayer_wallets_dir).unwrap();
@@ -59,34 +59,23 @@ async fn test_relayed_registration() {
             .run()
             .await;
 
-        let relayer_pem = relayer_wallets_dir.join(format!("relayer_{}.pem", i));
-        create_pem_file(relayer_pem.to_str().unwrap(), &relayer_pk, &relayer_addr);
+        let relayer_pem = relayer_wallets_dir.join(format!("relayer_{i}.pem"));
+        create_pem_file(relayer_pem.to_str().unwrap(), &relayer_pk);
         println!("Generated Relayer {}: {}", i, relayer_addr);
     }
 
     // Ensure cross-shard EGLD transfers to relayer wallets are finalized
     generate_blocks_on_simulator(10, &gateway_url).await;
 
-    // Start Relayer Service
-    let env = vec![
-        ("NETWORK_PROVIDER", gateway_url.as_str()),
-        ("IDENTITY_REGISTRY_ADDRESS", registry_addr.as_str()),
-        ("RELAYER_WALLETS_DIR", relayer_wallets_dir.to_str().unwrap()),
-        ("PORT", "3003"), // Different port
-        ("CHAIN_ID", chain_id.as_str()),
-        ("IS_TEST_ENV", "true"),
-        ("SKIP_SIMULATION", "false"),
-        ("LOG_LEVEL", "trace"),
-    ];
-
-    pm.start_node_service(
-        "Relayer",
-        "../x402_integration/multiversx-openclaw-relayer",
-        "dist/index.js",
-        env,
-        3003,
+    let relayer_url = start_relayer(
+        &mut pm,
+        &gateway_url,
+        &registry_addr,
+        relayer_wallets_dir.to_str().unwrap(),
+        &chain_id,
+        &[("LOG_LEVEL", "trace")],
     )
-    .expect("Failed to start Relayer");
+    .await;
 
     // Setup Moltbot (Unfunded)
     let moltbot_pk = generate_random_private_key();
@@ -94,8 +83,7 @@ async fn test_relayed_registration() {
     let moltbot_addr = moltbot_wallet.to_address().to_bech32("erd").to_string();
     println!("Moltbot Address (Unfunded): {}", moltbot_addr);
 
-    let moltbot_pem = project_root.join("tests").join("temp_moltbot_relayed.pem");
-    create_pem_file(moltbot_pem.to_str().unwrap(), &moltbot_pk, &moltbot_addr);
+    let moltbot_pem = create_temp_pem_file("moltbot_relayed", &moltbot_pk, &moltbot_addr);
 
     // Run Registration Script
     println!("Running Moltbot Registration with Relayer...");
@@ -104,12 +92,12 @@ async fn test_relayed_registration() {
         .arg("run")
         .arg("register")
         .current_dir("../moltbot-starter-kit")
-        .env("MULTIVERSX_PRIVATE_KEY", moltbot_pem.to_str().unwrap())
+        .env("MULTIVERSX_PRIVATE_KEY", moltbot_pem.as_str())
         .env("MULTIVERSX_API_URL", &gateway_url)
         .env("IDENTITY_REGISTRY_ADDRESS", &registry_addr)
         .env("CHAIN_ID", &chain_id)
         .env("MULTIVERSX_CHAIN_ID", &chain_id)
-        .env("MULTIVERSX_RELAYER_URL", "http://localhost:3003")
+        .env("MULTIVERSX_RELAYER_URL", &relayer_url)
         .env("FORCE_RELAYER", "true") // Enforce usage
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -133,6 +121,5 @@ async fn test_relayed_registration() {
     // Verify Relayer Paid Fees (Optional check, but verifying log is good enough for now)
 
     // Clean up
-    let _ = std::fs::remove_dir_all(&relayer_wallets_dir);
-    let _ = std::fs::remove_file(&moltbot_pem);
+    std::fs::remove_dir_all(&relayer_wallets_dir).ok();
 }

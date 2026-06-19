@@ -1,49 +1,36 @@
 use multiversx_sc_snippets::imports::*;
-use mx_agentic_commerce_tests::ProcessManager;
 use reqwest::Client;
 use serde_json::json;
 use std::process::Command;
-use tokio::time::{sleep, Duration};
 
 use crate::common::{
-    generate_random_private_key, get_simulator_chain_id,
+    address_to_bech32, generate_random_private_key, get_simulator_chain_id,
+    start_facilitator, IdentityRegistryInteractor, TestEnv,
 };
 
 #[tokio::test]
 async fn test_rejection_cases() {
-    let mut pm = ProcessManager::new();
-    let sim_port = pm.start_chain_simulator()
-        .expect("Failed to start simulator");
-    let gateway_url = format!("http://localhost:{}", sim_port);
+    let env = TestEnv::chain_only().await;
+    let mut pm = env.pm;
+    let gateway_url = env.gateway_url.clone();
+    let mut interactor = env.interactor;
 
-    // Setup Facilitator
     let chain_id = get_simulator_chain_id(&gateway_url).await;
     let facilitator_pk = generate_random_private_key();
-    let port = 3060;
 
-    let env_vars = vec![
-        ("PORT", "3060"),
-        ("PRIVATE_KEY", facilitator_pk.as_str()),
-        (
-            "REGISTRY_ADDRESS",
-            "erd1qqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqq6gq4hu",
-        ),
-        ("NETWORK_PROVIDER", gateway_url.as_str()),
-        ("GATEWAY_URL", gateway_url.as_str()),
-        ("CHAIN_ID", chain_id.as_str()),
-        ("SKIP_SIMULATION", "false"),
-    ];
+    let owner = env.owner.clone();
+    let identity = IdentityRegistryInteractor::init(&mut interactor, owner).await;
+    let registry_address = address_to_bech32(identity.address());
 
-    pm.start_node_service(
-        "Facilitator",
-        "../x402_integration/x402_facilitator",
-        "dist/index.js",
-        env_vars,
-        port,
+    let facilitator_url = start_facilitator(
+        &mut pm,
+        &facilitator_pk,
+        &registry_address,
+        &gateway_url,
+        &chain_id,
+        &[("SKIP_SIMULATION", "false")],
     )
-    .expect("Failed to start facilitator");
-
-    sleep(Duration::from_secs(4)).await;
+    .await;
 
     // 1. Setup Sender and Receiver
     let sender_pk_hex = generate_random_private_key();
@@ -109,7 +96,7 @@ async fn test_rejection_cases() {
     });
 
     let resp = client
-        .post(format!("http://localhost:{}/verify", port))
+        .post(format!("{facilitator_url}/verify"))
         .json(&body)
         .send()
         .await
@@ -168,7 +155,7 @@ async fn test_rejection_cases() {
     });
 
     let resp_low = client
-        .post(format!("http://localhost:{}/verify", port))
+        .post(format!("{facilitator_url}/verify"))
         .json(&body_low)
         .send()
         .await
@@ -206,7 +193,7 @@ async fn test_rejection_cases() {
     });
 
     let resp_diff = client
-        .post(format!("http://localhost:{}/verify", port))
+        .post(format!("{facilitator_url}/verify"))
         .json(&body_diff)
         .send()
         .await

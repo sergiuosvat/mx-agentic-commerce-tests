@@ -130,7 +130,7 @@ async fn test_identity_extended_operations() {
     ];
 
     identity
-        .set_service_configs(&mut interactor, new_services, "AGENT", 1)
+        .set_service_configs(&mut interactor, new_services, 1)
         .await;
     println!("✅ set_service_configs executed for service_id=2,3");
 
@@ -161,7 +161,7 @@ async fn test_identity_extended_operations() {
 
     // ── 7. Remove metadata ──
     identity
-        .remove_metadata(&mut interactor, vec!["version"], "AGENT", 1)
+        .remove_metadata(&mut interactor, vec!["version"], 1)
         .await;
     println!("✅ remove_metadata executed for key='version'");
 
@@ -219,7 +219,7 @@ async fn test_identity_extended_operations() {
 
     // ── 8. Remove service configs ──
     identity
-        .remove_service_configs(&mut interactor, vec![1], "AGENT", 1)
+        .remove_service_configs(&mut interactor, vec![1], 1)
         .await;
     println!("✅ remove_service_configs executed for service_id=1");
 

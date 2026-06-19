@@ -8,11 +8,9 @@ mod common;
 use common::{
     wait_for_simulator_ready,
     address_to_bech32, fund_address_on_simulator, generate_blocks_on_simulator,
-    generate_random_private_key, get_simulator_chain_id, issue_fungible_esdt,
-    IdentityRegistryInteractor, ServiceConfigInput,
+    generate_random_private_key, get_simulator_chain_id, start_facilitator,
+    issue_fungible_esdt, IdentityRegistryInteractor, ServiceConfigInput,
 };
-
-const FACILITATOR_PORT: u16 = 3075;
 
 /// Suite U2: Facilitator Advanced Coverage
 ///
@@ -36,12 +34,9 @@ async fn test_facilitator_advanced() {
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
 
     // ── 2. Setup Wallets ──
-    let pem_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("alice.pem");
-    let alice_bech32 = "erd1qyu5wthldzr8wx5c9ucg8kjagg0jfs53s8nr3zpz3hypefsdd8ssycr6th";
-    fund_address_on_simulator(alice_bech32, "100000000000000000000000", &gateway_url).await;
-
-    let alice_wallet = Wallet::from_pem_file(pem_path.to_str().unwrap()).expect("PEM load");
-    let alice_addr = interactor.register_wallet(alice_wallet).await;
+    let alice_addr = interactor.register_wallet(test_wallets::alice()).await;
+    let alice_bech32 = address_to_bech32(&alice_addr);
+    fund_address_on_simulator(&alice_bech32, "100000000000000000000000", &gateway_url).await;
 
     let buyer_pk = generate_random_private_key();
     let buyer_wallet = Wallet::from_private_key(&buyer_pk).unwrap();
@@ -77,45 +72,22 @@ async fn test_facilitator_advanced() {
     // ── 4. Start Facilitator ──
     let facilitator_pk = generate_random_private_key();
     let db_path = "./facilitator_suite_u2.db";
-    let _ = std::fs::remove_file(db_path);
-    let port_str = FACILITATOR_PORT.to_string();
 
-    let env_vars = vec![
-        ("PORT", port_str.as_str()),
-        ("PRIVATE_KEY", facilitator_pk.as_str()),
-        ("REGISTRY_ADDRESS", registry_address.as_str()),
-        ("IDENTITY_REGISTRY_ADDRESS", registry_address.as_str()),
-        ("NETWORK_PROVIDER", gateway_url.as_str()),
-        ("GATEWAY_URL", gateway_url.as_str()),
-        ("CHAIN_ID", chain_id.as_str()),
-        ("SQLITE_DB_PATH", db_path),
-        ("SKIP_SIMULATION", "false"),
-    ];
-
-    pm.start_node_service(
-        "Facilitator",
-        "../x402_integration/x402_facilitator",
-        "dist/index.js",
-        env_vars,
-        FACILITATOR_PORT,
+    let facilitator_url = start_facilitator(
+        &mut pm,
+        &facilitator_pk,
+        &registry_address,
+        &gateway_url,
+        &chain_id,
+        &[
+            ("IDENTITY_REGISTRY_ADDRESS", registry_address.as_str()),
+            ("SQLITE_DB_PATH", db_path),
+            ("SKIP_SIMULATION", "false"),
+        ],
     )
-    .expect("Failed to start facilitator");
+    .await;
 
     let client = reqwest::Client::new();
-    let facilitator_url = format!("http://localhost:{}", FACILITATOR_PORT);
-
-    // Wait for facilitator to be ready
-    for _ in 0..15 {
-        if client
-            .get(format!("{}/health", facilitator_url))
-            .send()
-            .await
-            .is_ok()
-        {
-            break;
-        }
-        sleep(Duration::from_millis(500)).await;
-    }
 
     // ── Test 1: /prepare — Auto-resolution from IdentityRegistry ──
     println!("\n📋 Test 1: /prepare (Architect auto-resolution)");
@@ -176,41 +148,16 @@ async fn test_facilitator_advanced() {
     // Start a SECOND facilitator with simulation ENABLED
     let sim_facilitator_pk = generate_random_private_key();
     let sim_db_path = "./facilitator_suite_u2_sim.db";
-    let _ = std::fs::remove_file(sim_db_path);
-    let sim_port: u16 = 3076;
-    let sim_port_str = sim_port.to_string();
 
-    let sim_env_vars = vec![
-        ("PORT", sim_port_str.as_str()),
-        ("PRIVATE_KEY", sim_facilitator_pk.as_str()),
-        ("REGISTRY_ADDRESS", registry_address.as_str()),
-        ("NETWORK_PROVIDER", gateway_url.as_str()),
-        ("GATEWAY_URL", gateway_url.as_str()),
-        ("CHAIN_ID", chain_id.as_str()),
-        ("SQLITE_DB_PATH", sim_db_path),
-        // No SKIP_SIMULATION — simulation enabled
-    ];
-
-    pm.start_node_service(
-        "FacSimulator",
-        "../x402_integration/x402_facilitator",
-        "dist/index.js",
-        sim_env_vars,
-        sim_port,
+    let sim_facilitator_url = start_facilitator(
+        &mut pm,
+        &sim_facilitator_pk,
+        &registry_address,
+        &gateway_url,
+        &chain_id,
+        &[("SQLITE_DB_PATH", sim_db_path)],
     )
-    .expect("Failed to start simulation facilitator");
-
-    for _ in 0..15 {
-        if client
-            .get(format!("http://localhost:{}/health", sim_port))
-            .send()
-            .await
-            .is_ok()
-        {
-            break;
-        }
-        sleep(Duration::from_millis(500)).await;
-    }
+    .await;
 
     // Sign tx with gas_limit = 1 (absurdly low, simulation should fail)
     let low_gas_output = Command::new("npx")
@@ -219,7 +166,7 @@ async fn test_facilitator_advanced() {
         .arg("--sender-pk")
         .arg(&buyer_pk)
         .arg("--receiver")
-        .arg(alice_bech32)
+        .arg(&alice_bech32)
         .arg("--value")
         .arg("1000000000000000000")
         .arg("--nonce")
@@ -260,7 +207,7 @@ async fn test_facilitator_advanced() {
         });
 
         let sim_resp = client
-            .post(format!("http://localhost:{}/verify", sim_port))
+            .post(format!("{}/verify", sim_facilitator_url))
             .json(&body)
             .send()
             .await
@@ -290,7 +237,7 @@ async fn test_facilitator_advanced() {
         .arg("--sender-pk")
         .arg(&buyer_pk)
         .arg("--receiver")
-        .arg(alice_bech32)
+        .arg(&alice_bech32)
         .arg("--value")
         .arg("1000000000000000000")
         .arg("--nonce")
@@ -388,7 +335,7 @@ async fn test_facilitator_advanced() {
         .arg("--sender-pk")
         .arg(&buyer_pk)
         .arg("--receiver")
-        .arg(alice_bech32)
+        .arg(&alice_bech32)
         .arg("--value")
         .arg("0")
         .arg("--token")
@@ -447,8 +394,7 @@ async fn test_facilitator_advanced() {
     }
 
     // Cleanup
-    let _ = std::fs::remove_file(db_path);
-    let _ = std::fs::remove_file(sim_db_path);
+
     println!("\n✅ Suite U2: Facilitator Advanced — COMPLETED");
     println!("  Tested: /prepare auto-resolution, /events finality, simulation failure,");
     println!("          settle → events, ESDT settle");

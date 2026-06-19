@@ -1,49 +1,24 @@
 use crate::common::{
-    create_pem_file, fund_address_on_simulator, generate_random_private_key,
-    EscrowInteractor, EscrowStatus, IdentityRegistryInteractor, ValidationRegistryInteractor,
+    generate_random_private_key, EscrowInteractor, EscrowStatus, IdentityRegistryInteractor,
+    TestEnv, ValidationRegistryInteractor,
 };
 use multiversx_sc_snippets::imports::*;
-use mx_agentic_commerce_tests::ProcessManager;
 use std::time::{SystemTime, UNIX_EPOCH};
 use tokio::time::{sleep, Duration};
-
 
 /// S-004: Deposit → deadline passes → refund → verify depositor refunded
 #[tokio::test]
 async fn test_escrow_refund_after_deadline() {
-    let mut process_manager = ProcessManager::new();
-    let port = process_manager
-        .start_chain_simulator()
-        .expect("Failed to start simulator");
-    let gateway_url = format!("http://localhost:{}", port);
-    sleep(Duration::from_secs(3)).await;
-
-    let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
-
-    // 1. Setup
-    let owner_key = generate_random_private_key();
-    let owner_wallet = Wallet::from_private_key(&owner_key).unwrap();
-    let owner_address = owner_wallet.to_address();
+    let env = TestEnv::chain_only().await;
+    std::mem::forget(env.pm);
+    let mut interactor = env.interactor;
+    let gateway_url = env.gateway_url.clone();
+    let owner_address = env.owner.clone();
 
     let receiver_key = generate_random_private_key();
     let receiver_wallet = Wallet::from_private_key(&receiver_key).unwrap();
     let receiver_address = receiver_wallet.to_address();
-
-    let pem_path = "test_escrow_refund.pem";
-    create_pem_file(
-        pem_path,
-        &owner_key,
-        &owner_address.to_bech32("erd").to_string(),
-    );
-    interactor.register_wallet(owner_wallet).await;
     interactor.register_wallet(receiver_wallet).await;
-
-    fund_address_on_simulator(
-        &owner_address.to_bech32("erd").to_string(),
-        "100000000000000000000000",
-        &gateway_url,
-    )
-    .await;
 
     // 2. Deploy contracts
     let identity = IdentityRegistryInteractor::init(&mut interactor, owner_address.clone()).await;
@@ -108,10 +83,11 @@ async fn test_escrow_refund_after_deadline() {
     //    Each block advances ~6 seconds → 200 * 6 = 1200 seconds advancement.
     //    Chain will be at ~now + 300 + 1200 = now + 1500 >> deadline (now + 600).
     let client = reqwest::Client::new();
-    let _ = client
+    client
         .post(format!("{}/simulator/generate-blocks/200", gateway_url))
         .send()
-        .await;
+        .await
+        .ok();
     sleep(Duration::from_millis(1000)).await;
 
     println!("Generated 200 blocks to advance past deadline");
@@ -124,6 +100,4 @@ async fn test_escrow_refund_after_deadline() {
     assert_eq!(data.status, EscrowStatus::Refunded);
 
     println!("✅ S-004 PASSED: Escrow refund after deadline verified");
-
-    std::fs::remove_file(pem_path).unwrap_or(());
 }

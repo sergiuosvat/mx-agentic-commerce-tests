@@ -4,20 +4,15 @@
 
 use multiversx_sc::types::ManagedBuffer;
 use multiversx_sc_snippets::imports::*;
-use mx_agentic_commerce_tests::ProcessManager;
-use crate::common::wait_for_simulator_ready;
+use crate::common::TestEnv;
 
 
 #[tokio::test]
 async fn test_feedback_without_authorization() {
-    let mut pm = ProcessManager::new();
-    let port = pm.start_chain_simulator()
-        .expect("Failed to start simulator");
-    let gateway_url = format!("http://localhost:{}", port);
-    wait_for_simulator_ready(&gateway_url).await;
-
-    let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
-    let owner = interactor.register_wallet(test_wallets::alice()).await;
+    let env = TestEnv::chain_only().await;
+    std::mem::forget(env.pm);
+    let mut interactor = env.interactor;
+    let owner = env.owner.clone();
     let employer = interactor.register_wallet(test_wallets::bob()).await;
 
     // 1. Deploy All Registries

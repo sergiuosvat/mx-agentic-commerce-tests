@@ -2,16 +2,13 @@ use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
 use serde_json::json;
 use std::process::Command;
-use tokio::time::{sleep, Duration};
 
 mod common;
 use common::{
     wait_for_simulator_ready,
     address_to_bech32, fund_address_on_simulator, generate_random_private_key,
-    get_simulator_chain_id, IdentityRegistryInteractor, ServiceConfigInput,
+    get_simulator_chain_id, start_facilitator, IdentityRegistryInteractor, ServiceConfigInput,
 };
-
-const FACILITATOR_PORT: u16 = 3070;
 
 struct SignTxParams<'a> {
     sender_pk: &'a str,
@@ -101,13 +98,10 @@ async fn test_facilitator_extended() {
     fund_address_on_simulator(&sender_bech32, "1000000000000000000000", &gateway_url).await;
 
     // ── 3. Deploy Identity Registry + Register Agent with Service Config ──
-    let pem_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("alice.pem");
-    let alice_bech32 = "erd1qyu5wthldzr8wx5c9ucg8kjagg0jfs53s8nr3zpz3hypefsdd8ssycr6th";
-    fund_address_on_simulator(alice_bech32, "100000000000000000000000", &gateway_url).await;
-
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
-    let alice_wallet = Wallet::from_pem_file(pem_path.to_str().unwrap()).expect("PEM load");
-    let alice_addr = interactor.register_wallet(alice_wallet).await;
+    let alice_addr = interactor.register_wallet(test_wallets::alice()).await;
+    let alice_bech32 = address_to_bech32(&alice_addr);
+    fund_address_on_simulator(&alice_bech32, "100000000000000000000000", &gateway_url).await;
 
     let identity = IdentityRegistryInteractor::init(&mut interactor, alice_addr.clone()).await;
     identity
@@ -136,44 +130,21 @@ async fn test_facilitator_extended() {
     // ── 4. Start Facilitator ──
     let facilitator_pk = generate_random_private_key();
     let db_path = "./facilitator_suite_u.db";
-    let _ = std::fs::remove_file(db_path);
-    let port_str = FACILITATOR_PORT.to_string();
 
-    let env_vars = vec![
-        ("PORT", port_str.as_str()),
-        ("PRIVATE_KEY", facilitator_pk.as_str()),
-        ("REGISTRY_ADDRESS", registry_address.as_str()),
-        ("NETWORK_PROVIDER", gateway_url.as_str()),
-        ("GATEWAY_URL", gateway_url.as_str()),
-        ("CHAIN_ID", chain_id.as_str()),
-        ("SQLITE_DB_PATH", db_path),
-        ("SKIP_SIMULATION", "false"),
-    ];
-
-    pm.start_node_service(
-        "Facilitator",
-        "../x402_integration/x402_facilitator",
-        "dist/index.js",
-        env_vars,
-        FACILITATOR_PORT,
+    let facilitator_url = start_facilitator(
+        &mut pm,
+        &facilitator_pk,
+        &registry_address,
+        &gateway_url,
+        &chain_id,
+        &[
+            ("SQLITE_DB_PATH", db_path),
+            ("SKIP_SIMULATION", "false"),
+        ],
     )
-    .expect("Failed to start facilitator");
+    .await;
 
     let client = reqwest::Client::new();
-    let facilitator_url = format!("http://localhost:{}", FACILITATOR_PORT);
-
-    // Wait for facilitator to be ready
-    for _ in 0..15 {
-        if client
-            .get(format!("{}/health", facilitator_url))
-            .send()
-            .await
-            .is_ok()
-        {
-            break;
-        }
-        sleep(Duration::from_millis(500)).await;
-    }
 
     let value_str = "1000000000000000000"; // 1 EGLD
 
@@ -377,7 +348,6 @@ async fn test_facilitator_extended() {
     );
 
     // Cleanup
-    let _ = std::fs::remove_file(db_path);
     println!("\nSuite U: Facilitator Extended — PASSED ✅");
     println!("  Tested: validBefore (expired), validAfter (future), replay protection,");
     println!("          free-service (amount=0)");

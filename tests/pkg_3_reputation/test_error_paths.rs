@@ -1,16 +1,12 @@
 use multiversx_sc::types::ManagedBuffer;
 use multiversx_sc_snippets::imports::*;
-use mx_agentic_commerce_tests::ProcessManager;
 
-use crate::common::{
+use crate::common::{TestEnv, 
     address_to_bech32, deploy_all_registries, fund_address_on_simulator,
-    wait_for_simulator_ready,
 };
 
-/// Returns (pm, interactor, reputation_addr, validation_addr, owner, employer, mallory)
-/// NOTE: pm MUST be kept alive for the duration of the test to prevent the simulator from being killed.
+/// Returns (interactor, reputation_addr, validation_addr, owner, employer, mallory)
 async fn setup_env() -> (
-    ProcessManager,
     Interactor,
     Address,
     Address,
@@ -18,15 +14,11 @@ async fn setup_env() -> (
     Address,
     Address,
 ) {
-    let mut pm = ProcessManager::new();
-    let port = pm.start_chain_simulator()
-        .expect("Failed to start simulator");
-    let gateway_url = format!("http://localhost:{}", port);
-    wait_for_simulator_ready(&gateway_url).await;
-
-    let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
-
-    let owner = interactor.register_wallet(test_wallets::alice()).await;
+    let env = TestEnv::chain_only().await;
+    std::mem::forget(env.pm);
+    let mut interactor = env.interactor;
+    let gateway_url = env.gateway_url.clone();
+    let owner = env.owner.clone();
     let employer = interactor.register_wallet(test_wallets::bob()).await;
     let mallory = interactor.register_wallet(test_wallets::carol()).await;
 
@@ -70,9 +62,7 @@ async fn setup_env() -> (
         .run()
         .await;
 
-
     (
-        pm,
         interactor,
         reputation_addr,
         validation_addr,
@@ -85,7 +75,7 @@ async fn setup_env() -> (
 
 #[tokio::test]
 async fn test_submit_feedback_non_employer() {
-    let (pm, mut interactor, reputation_addr, .., mallory) = setup_env().await;
+    let (mut interactor, reputation_addr, .., mallory) = setup_env().await;
 
     let job_id_buf = ManagedBuffer::<StaticApi>::new_from_bytes(b"job-rep-err");
 
@@ -102,13 +92,11 @@ async fn test_submit_feedback_non_employer() {
         .returns(ExpectError(4, "Only the employer can provide feedback"))
         .run()
         .await;
-
-    drop(pm);
 }
 
 #[tokio::test]
 async fn test_submit_feedback_duplicate() {
-    let (pm, mut interactor, reputation_addr, _, _, employer, ..) = setup_env().await;
+    let (mut interactor, reputation_addr, _, _, employer, _) = setup_env().await;
 
     let job_id_buf = ManagedBuffer::<StaticApi>::new_from_bytes(b"job-rep-err");
 
@@ -138,14 +126,12 @@ async fn test_submit_feedback_duplicate() {
         .returns(ExpectError(4, "Feedback already provided for this job"))
         .run()
         .await;
-
-    drop(pm);
 }
 
 #[tokio::test]
 async fn test_append_response_permissionless() {
     // ERC-8004: append_response is now permissionless — anyone can call it
-    let (pm, mut interactor, reputation_addr, .., mallory) = setup_env().await;
+    let (mut interactor, reputation_addr, .., mallory) = setup_env().await;
 
     let job_id_buf = ManagedBuffer::<StaticApi>::new_from_bytes(b"job-rep-err");
     let response_uri = ManagedBuffer::<StaticApi>::new_from_bytes(b"https://response.example.com");
@@ -163,6 +149,4 @@ async fn test_append_response_permissionless() {
         .await;
 
     println!("append_response by anyone succeeded — ERC-8004 compliant");
-
-    drop(pm);
 }

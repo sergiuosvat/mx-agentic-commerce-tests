@@ -8,12 +8,9 @@ use tokio::time::{sleep, Duration};
 mod common;
 use common::{
     wait_for_simulator_ready,
-    address_to_bech32, create_pem_file, fund_address_on_simulator, generate_blocks_on_simulator,
-    generate_random_private_key,
+    address_to_bech32, create_temp_pem_file, fund_address_on_simulator, generate_blocks_on_simulator,
+    generate_random_private_key, start_mpp_facilitator,
 };
-
-const MPP_PORT: u16 = 3006;
-const MPP_URL: &str = "http://localhost:3006";
 
 /// Suite Z: MPP Facilitator Relayed V3 tests
 ///
@@ -47,9 +44,8 @@ async fn test_relayed_mpp_facilitator() {
 
     // 2. Setup Alice's wallet (which is used as Relayer by mpp-facilitator-mvx defaults)
     let project_root = std::env::current_dir().unwrap();
-    let alice_pem_path = project_root.join("alice.pem");
-    let alice_wallet = Wallet::from_pem_file(alice_pem_path.to_str().unwrap()).unwrap();
-    let relayer_sc_addr = Address::from_slice(alice_wallet.to_address().as_bytes());
+    let alice = interactor.register_wallet(test_wallets::alice()).await;
+    let relayer_sc_addr = alice.clone();
     let relayer_bech32 = address_to_bech32(&relayer_sc_addr);
 
     // Fund relayer
@@ -66,7 +62,7 @@ async fn test_relayed_mpp_facilitator() {
     // ────────────────────────────────────────────
     
     // Both Sender and Relayer must be in the same shard for Relayed V3!
-    let relayer_pk_last_byte = alice_wallet.to_address().as_bytes()[31];
+    let relayer_pk_last_byte = relayer_sc_addr.as_bytes()[31];
     let (bob_pk, bob_wallet) = loop {
         let bob_pk = generate_random_private_key();
         let bob_wallet = Wallet::from_private_key(&bob_pk).unwrap();
@@ -94,31 +90,25 @@ async fn test_relayed_mpp_facilitator() {
     }
     fs::create_dir_all(&temp_dir).unwrap();
 
-    let bob_pem = temp_dir.join("bob.pem");
-    create_pem_file(bob_pem.to_str().unwrap(), &bob_pk, &bob_addr);
+    let bob_pem = create_temp_pem_file("bob", &bob_pk, &bob_addr);
     let bob_pem_abs = fs::canonicalize(&bob_pem).expect("Failed to canonicalize");
 
     // 3. Start MPP Facilitator
-    let env = vec![
-        ("PORT", "3006"),
-        ("NETWORK_PROVIDER", gateway_url.as_str()),
-        ("MPP_SECRET_KEY", "test-secret-key-12345678901234567890123456789012"),
-    ];
-
-    pm.start_node_service(
-        "MppFacilitator",
-        "../mpp-facilitator-mvx",
-        "dist/main.js",
-        env,
-        MPP_PORT,
+    let mpp_url = start_mpp_facilitator(
+        &mut pm,
+        &gateway_url,
+        &chain_id,
+        &[(
+            "MPP_SECRET_KEY",
+            "test-secret-key-12345678901234567890123456789012",
+        )],
     )
-    .expect("Failed to start MPP Facilitator");
-    sleep(Duration::from_secs(3)).await;
+    .await;
 
     // Verify relayer address via endpoint
     let client = reqwest::Client::new();
     let relayer_addr_res = client
-        .get(format!("{}/relayer_address", MPP_URL))
+        .get(format!("{}/relayer_address", mpp_url))
         .send()
         .await
         .expect("Failed to get relayer address");
@@ -170,7 +160,7 @@ async fn test_relayed_mpp_facilitator() {
     // ────────────────────────────────────────────
     let submit_req = json!(payload_json);
     let res = client
-        .post(format!("{}/submit_relayed_v3", MPP_URL))
+        .post(format!("{}/submit_relayed_v3", mpp_url))
         .json(&submit_req)
         .send()
         .await
@@ -197,6 +187,6 @@ async fn test_relayed_mpp_facilitator() {
     );
 
     // Cleanup
-    let _ = fs::remove_dir_all(&temp_dir);
+    fs::remove_dir_all(&temp_dir).ok();
     println!("✅ MPP Facilitator Relayed V3 passed!");
 }

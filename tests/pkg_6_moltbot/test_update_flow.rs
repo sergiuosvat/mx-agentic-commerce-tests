@@ -1,23 +1,18 @@
 use identity_registry_interactor::identity_registry_proxy::IdentityRegistryProxy;
 use multiversx_sc::types::{ManagedAddress, TokenIdentifier};
 use multiversx_sc_snippets::imports::*;
-use mx_agentic_commerce_tests::ProcessManager;
 
-use crate::common::{deploy_all_registries, wait_for_simulator_ready};
+use crate::common::{TestEnv, deploy_all_registries};
 
 /// Test the update_agent flow: register → update name/uri → verify owner unchanged.
 #[tokio::test]
 async fn test_update_agent_flow() {
-    let mut pm = ProcessManager::new();
-    let port = pm.start_chain_simulator()
-        .expect("Failed to start simulator");
-    let gateway_url = format!("http://localhost:{}", port);
-    wait_for_simulator_ready(&gateway_url).await;
+    let env = TestEnv::chain_only().await;
+    std::mem::forget(env.pm);
+    let mut interactor = env.interactor;
+    let owner = env.owner.clone();
 
-    let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
     interactor.generate_blocks_until_all_activations().await;
-
-    let owner = interactor.register_wallet(test_wallets::alice()).await;
 
     // 1. Deploy registries
     let (identity, _, _) = deploy_all_registries(&mut interactor, owner.clone()).await;

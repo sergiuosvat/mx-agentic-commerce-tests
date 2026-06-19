@@ -1,16 +1,13 @@
 use serde_json::json;
-use tokio::time::{sleep, Duration};
 
 mod common;
 use common::{
     wait_for_simulator_ready,
-    address_to_bech32, fund_address_on_simulator, generate_blocks_on_simulator,
-    generate_random_private_key, get_simulator_chain_id,
+    address_to_bech32, create_pem_file, fund_address_on_simulator, generate_blocks_on_simulator,
+    generate_random_private_key, get_simulator_chain_id, start_relayer, temp_relayer_wallets_dir,
 };
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
-
-const RELAYER_PORT: u16 = 3098;
 
 /// Suite V2: Relayer Advanced Coverage
 ///
@@ -32,12 +29,9 @@ async fn test_relayer_advanced() {
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
 
     // ── 2. Setup ──
-    let pem_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("alice.pem");
-    let alice_bech32 = "erd1qyu5wthldzr8wx5c9ucg8kjagg0jfs53s8nr3zpz3hypefsdd8ssycr6th";
-    fund_address_on_simulator(alice_bech32, "100000000000000000000000", &gateway_url).await;
-
-    let alice_wallet = Wallet::from_pem_file(pem_path.to_str().unwrap()).expect("PEM load");
-    let alice_addr = interactor.register_wallet(alice_wallet).await;
+    let alice_addr = interactor.register_wallet(test_wallets::alice()).await;
+    let alice_bech32 = address_to_bech32(&alice_addr);
+    fund_address_on_simulator(&alice_bech32, "100000000000000000000000", &gateway_url).await;
 
     let (identity, ..) =
         common::deploy_all_registries(&mut interactor, alice_addr.clone()).await;
@@ -46,8 +40,9 @@ async fn test_relayer_advanced() {
     generate_blocks_on_simulator(20, &gateway_url).await;
 
     // ── 3. Create Relayer Wallets Across Shards ──
-    let relayer_wallets_dir = format!("{}/tmp_relayer_v2", env!("CARGO_MANIFEST_DIR"));
-    let _ = std::fs::create_dir_all(&relayer_wallets_dir);
+    let relayer_wallets_dir = std::path::PathBuf::from(temp_relayer_wallets_dir("relayer_v2"));
+    std::fs::remove_dir_all(&relayer_wallets_dir).ok();
+    std::fs::create_dir_all(&relayer_wallets_dir).unwrap();
 
     // Generate wallets targeting different shards (3 per shard × 3 shards = 9 wallets)
     let mut shard_wallets: Vec<(String, String)> = Vec::new();
@@ -66,59 +61,25 @@ async fn test_relayer_advanced() {
         // Don't fund the rest — they represent "exhausted" wallets
 
         // Write PEM
-        let pem_content = format!(
-            "-----BEGIN PRIVATE KEY for {}-----\n{}\n-----END PRIVATE KEY for {}-----",
-            bech32,
-            hex::encode(pk.as_bytes()),
-            bech32
-        );
-        std::fs::write(
-            format!("{}/relayer_{}.pem", relayer_wallets_dir, i),
-            pem_content,
-        )
-        .ok();
+        let pem_path = relayer_wallets_dir.join(format!("relayer_{i}.pem"));
+        create_pem_file(pem_path.to_str().unwrap(), &pk);
 
         shard_wallets.push((bech32, pk));
     }
 
     generate_blocks_on_simulator(15, &gateway_url).await;
 
-    // ── 4. Start Relayer ──
-    let port_str = RELAYER_PORT.to_string();
-
-    pm.start_node_service(
-        "RelayerV2",
-        "../x402_integration/multiversx-openclaw-relayer",
-        "dist/index.js",
-        vec![
-            ("PORT", port_str.as_str()),
-            ("NETWORK_PROVIDER", gateway_url.as_str()),
-            ("IDENTITY_REGISTRY_ADDRESS", identity_bech32.as_str()),
-            ("RELAYER_WALLETS_DIR", relayer_wallets_dir.as_str()),
-            ("CHAIN_ID", chain_id.as_str()),
-            ("IS_TEST_ENV", "true"),
-            ("SKIP_SIMULATION", "false"),
-            ("LOG_LEVEL", "warn"),
-        ],
-        RELAYER_PORT,
+    let relayer_url = start_relayer(
+        &mut pm,
+        &gateway_url,
+        &identity_bech32,
+        relayer_wallets_dir.to_str().unwrap(),
+        &chain_id,
+        &[("LOG_LEVEL", "warn")],
     )
-    .expect("Failed to start relayer");
+    .await;
 
     let client = reqwest::Client::new();
-    let relayer_url = format!("http://localhost:{}", RELAYER_PORT);
-
-    // Wait for relayer
-    for _ in 0..15 {
-        if client
-            .get(format!("{}/health", relayer_url))
-            .send()
-            .await
-            .is_ok()
-        {
-            break;
-        }
-        sleep(Duration::from_millis(500)).await;
-    }
 
     // ── Test 1: Multi-shard wallet selection ──
     println!("\n📋 Test 1: Multi-shard Wallet Selection");
@@ -236,7 +197,7 @@ async fn test_relayer_advanced() {
     }
 
     // Cleanup
-    let _ = std::fs::remove_dir_all(&relayer_wallets_dir);
+    std::fs::remove_dir_all(&relayer_wallets_dir).ok();
     println!("\n✅ Suite V2: Relayer Advanced — COMPLETED");
     println!("  Tested: multi-shard wallet selection, wallet exhaustion, OpenClaw skills");
 }

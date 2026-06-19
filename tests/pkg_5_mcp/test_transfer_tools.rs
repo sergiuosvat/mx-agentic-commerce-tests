@@ -1,68 +1,31 @@
 use crate::common::{
-    wait_for_simulator_ready,
-    address_to_bech32, fund_address_on_simulator, generate_random_private_key,
-    get_simulator_chain_id,
+    address_to_bech32, create_temp_pem_file, fund_address_on_simulator, generate_random_private_key,
+    get_simulator_chain_id, TestEnv,
 };
-use base64::Engine;
 use multiversx_sc_snippets::imports::*;
-use mx_agentic_commerce_tests::ProcessManager;
 use tokio::time::{sleep, Duration};
 
 #[tokio::test]
 async fn test_transfer_tools() {
-    let mut pm = ProcessManager::new();
-    let port = pm.start_chain_simulator()
-        .expect("Failed to start simulator");
-    let gateway_url = format!("http://localhost:{}", port);
-    wait_for_simulator_ready(&gateway_url).await;
-
+    let env = TestEnv::chain_only().await;
+    std::mem::forget(env.pm);
+    let gateway_url = env.gateway_url.clone();
     let chain_id = get_simulator_chain_id(&gateway_url).await;
-    let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
+    let mut interactor = env.interactor;
 
-    // CRITICAL: Activate all protocol features (including ESDT System SC)
-    // Without this, ESDT issuance fails with "ESDT SC disabled"
     interactor.generate_blocks_until_all_activations().await;
 
-    // 1. Setup Sender (Alice)
     let alice_pk_hex = generate_random_private_key();
     let alice_wallet = Wallet::from_private_key(&alice_pk_hex).unwrap();
     let alice_addr = alice_wallet.to_address();
     let alice_bech32 = address_to_bech32(&alice_addr);
 
-    // Fund Alice
-    fund_address_on_simulator(&alice_bech32, "200000000000000000000", &gateway_url).await; // 200 EGLD
+    fund_address_on_simulator(&alice_bech32, "200000000000000000000", &gateway_url).await;
 
-    // 2. Create PEM file manually (Hex -> Base64 for SDK)
-    let temp_pem_path = std::env::current_dir()
-        .unwrap()
-        .join("tests/pkg_5_mcp/alice_transfer.pem");
-    if let Some(parent) = temp_pem_path.parent() {
-        std::fs::create_dir_all(parent).unwrap();
-    }
+    let temp_pem_path = create_temp_pem_file("alice_transfer", &alice_pk_hex, &alice_bech32);
 
-    let alice_pk_bytes = hex::decode(&alice_pk_hex).unwrap();
-    let alice_pub_bytes = alice_addr.as_bytes();
-
-    // Construct 64-byte key (Secret + Public)
-    let mut full_key = Vec::new();
-    full_key.extend_from_slice(&alice_pk_bytes);
-    full_key.extend_from_slice(alice_pub_bytes);
-
-    // SDK expects Base64(Hex(KeyBytes)) based on pem.js inspection
-    let hex_key = hex::encode(&full_key);
-    let base64_sk = base64::engine::general_purpose::STANDARD.encode(hex_key);
-
-    let pem_content = format!(
-        "-----BEGIN PRIVATE KEY for {}-----\n{}\n-----END PRIVATE KEY for {}-----",
-        alice_bech32, base64_sk, alice_bech32
-    );
-    std::fs::write(&temp_pem_path, pem_content).unwrap();
-
-    // 3. Start MCP with Wallet
     let mut client =
-        crate::mcp_client::McpClient::new(&chain_id, Some(temp_pem_path.to_str().unwrap()), &gateway_url).await;
-
-    // 4. Test send-egld
+        crate::mcp_client::McpClient::new(&chain_id, Some(temp_pem_path.as_str()), &gateway_url).await;
     println!("Testing send-egld...");
     let bob_pk = generate_random_private_key();
     let bob_wallet = Wallet::from_private_key(&bob_pk).unwrap();
@@ -110,7 +73,7 @@ async fn test_transfer_tools() {
                 }
             }
         }
-        let _ = interactor.generate_blocks(1).await;
+        interactor.generate_blocks(1).await.ok();
         sleep(Duration::from_millis(500)).await;
     }
     assert!(balance_found, "Bob should have 1 EGLD");
@@ -153,7 +116,7 @@ async fn test_transfer_tools() {
     let alice_esdt_url = format!("{}/address/{}/esdt", gateway_url, alice_bech32);
 
     for i in 0..20 {
-        let _ = interactor.generate_blocks(1).await;
+        interactor.generate_blocks(1).await.ok();
         sleep(Duration::from_millis(500)).await;
 
         let resp_esdt = client_http.get(&alice_esdt_url).send().await;
@@ -219,7 +182,7 @@ async fn test_transfer_tools() {
                 }
             }
         }
-        let _ = interactor.generate_blocks(1).await;
+        interactor.generate_blocks(1).await.ok();
         sleep(Duration::from_millis(500)).await;
     }
     assert!(token_found, "Bob should have 100 tokens");
@@ -251,7 +214,7 @@ async fn test_transfer_tools() {
 
     // Wait for it to finalize
     for _ in 0..5 {
-        let _ = interactor.generate_blocks(1).await;
+        interactor.generate_blocks(1).await.ok();
         sleep(Duration::from_millis(300)).await;
     }
 
@@ -301,7 +264,7 @@ async fn test_transfer_tools() {
     // Wait for NFT collection to appear
     let mut nft_collection_id = String::new();
     for i in 0..20 {
-        let _ = interactor.generate_blocks(1).await;
+        interactor.generate_blocks(1).await.ok();
         sleep(Duration::from_millis(500)).await;
 
         // Check Alice's tokens for the new collection
@@ -444,7 +407,7 @@ async fn test_transfer_tools() {
 
     // Generate blocks to process
     for _ in 0..5 {
-        let _ = interactor.generate_blocks(1).await;
+        interactor.generate_blocks(1).await.ok();
         sleep(Duration::from_millis(300)).await;
     }
     println!("ESDTRoleNFTCreate set");
@@ -477,7 +440,7 @@ async fn test_transfer_tools() {
     // Verify NFT appears on Alice's account
     let mut nft_found = false;
     for _ in 0..15 {
-        let _ = interactor.generate_blocks(1).await;
+        interactor.generate_blocks(1).await.ok();
         sleep(Duration::from_millis(500)).await;
 
         let resp_esdt = client_http
@@ -502,5 +465,4 @@ async fn test_transfer_tools() {
     println!("=== All MCP transfer & token lifecycle tools PASSED ===");
 
     // Cleanup
-    let _ = std::fs::remove_file(temp_pem_path);
 }

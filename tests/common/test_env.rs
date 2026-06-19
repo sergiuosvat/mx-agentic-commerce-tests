@@ -16,11 +16,11 @@ pub struct TestEnv {
 }
 
 impl TestEnv {
-    /// Start simulator, fund alice, return ready interactor.
-    pub async fn chain_only() -> Self {
+    /// Start simulator with custom options (e.g. 1-day round duration for time tests).
+    pub async fn chain_only_with_options(options: mx_agentic_commerce_tests::ChainSimulatorOptions) -> Self {
         let mut pm = ProcessManager::new();
         let port = pm
-            .start_chain_simulator()
+            .start_chain_simulator_with_options(options)
             .expect("Failed to start simulator");
         let gateway_url = format!("http://localhost:{port}");
         wait_for_simulator_ready(&gateway_url).await;
@@ -42,6 +42,11 @@ impl TestEnv {
             gateway_url,
             owner,
         }
+    }
+
+    /// Start simulator, fund alice, return ready interactor.
+    pub async fn chain_only() -> Self {
+        Self::chain_only_with_options(mx_agentic_commerce_tests::ChainSimulatorOptions::default()).await
     }
 
     /// Chain-only setup plus all three registries deployed.

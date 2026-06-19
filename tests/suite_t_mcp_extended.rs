@@ -8,7 +8,10 @@ use tokio::process::Command;
 use tokio::time::Duration;
 
 mod common;
-use common::wait_for_simulator_ready;
+use common::{
+    address_to_bech32, create_temp_pem_file, fund_address_on_simulator, generate_random_private_key,
+    wait_for_simulator_ready,
+};
 
 
 async fn read_json_response(reader: &mut BufReader<ChildStdout>) -> String {
@@ -79,7 +82,7 @@ async fn call_tool(
     id: u64,
     tool_name: &str,
     arguments: Value,
-) -> (Value, String) {
+) -> String {
     let resp = mcp_call(
         stdin,
         reader,
@@ -93,16 +96,13 @@ async fn call_tool(
     .await;
 
     if let Some(error) = resp.get("error") {
-        let error_str = format!("ERROR: {:?}", error);
-        return (resp, error_str);
+        return format!("ERROR: {:?}", error);
     }
 
-    let text = resp["result"]["content"][0]["text"]
+    resp["result"]["content"][0]["text"]
         .as_str()
         .unwrap_or("(no text)")
-        .to_string();
-
-    (resp, text)
+        .to_string()
 }
 
 /// Suite T: Extended MCP Tool Coverage
@@ -127,19 +127,15 @@ async fn test_mcp_extended_tool_coverage() {
 
     let chain_id = common::get_simulator_chain_id(&gateway_url).await;
 
-    // Use existing alice.pem
-    let pem_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("alice.pem");
-    assert!(pem_path.exists(), "alice.pem not found at {:?}", pem_path);
+    let wallet_pk = generate_random_private_key();
+    let wallet = Wallet::from_private_key(&wallet_pk).unwrap();
+    let wallet_addr = wallet.to_address();
+    let wallet_bech32 = address_to_bech32(&wallet_addr);
+    fund_address_on_simulator(&wallet_bech32, "100000000000000000000000", &gateway_url).await;
+    let pem_path = create_temp_pem_file("mcp_suite_t", &wallet_pk, &wallet_bech32);
 
-    // ── 2. Deploy contracts for registry tools ──
-    // Registry tools need deployed identity/validation/reputation contracts
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
-    let alice_wallet = Wallet::from_pem_file(pem_path.to_str().unwrap()).expect("PEM load");
-    let alice_addr = interactor.register_wallet(alice_wallet).await;
-
-    // Fund the actual PEM wallet address (may differ from well-known alice)
-    let alice_bech32 = common::address_to_bech32(&alice_addr);
-    common::fund_address_on_simulator(&alice_bech32, "100000000000000000000000", &gateway_url).await;
+    let alice_addr = interactor.register_wallet(wallet).await;
 
     let (identity, validation_addr, reputation_addr) =
         common::deploy_all_registries(&mut interactor, alice_addr.clone()).await;
@@ -167,7 +163,7 @@ async fn test_mcp_extended_tool_coverage() {
         .env("MVX_API_URL", &gateway_url)
         .env("MVX_NETWORK", "devnet")
         .env("MVX_CHAIN_ID", &chain_id)
-        .env("MVX_WALLET_PEM", pem_path.to_str().unwrap())
+        .env("MVX_WALLET_PEM", pem_path.as_str())
         .env("MVX_IDENTITY_CONTRACT", &identity_bech32)
         .env("MVX_VALIDATION_CONTRACT", &validation_bech32)
         .env("MVX_REPUTATION_CONTRACT", &reputation_bech32)
@@ -187,7 +183,7 @@ async fn test_mcp_extended_tool_coverage() {
 
     // ── Test 1: send-tokens ──
     println!("\n📋 Test 1: send-tokens");
-    let (_resp, text) = call_tool(
+    let text = call_tool(
         stdin,
         &mut reader,
         10,
@@ -206,7 +202,7 @@ async fn test_mcp_extended_tool_coverage() {
     // ── Test 2: track-transaction ──
     println!("\n📋 Test 2: track-transaction");
     let fake_hash = "a".repeat(64);
-    let (_resp, text) = call_tool(
+    let text = call_tool(
         stdin,
         &mut reader,
         11,
@@ -229,7 +225,7 @@ async fn test_mcp_extended_tool_coverage() {
 
     // ── Test 3: issue-nft-collection ──
     println!("\n📋 Test 3: issue-nft-collection");
-    let (_resp, text) = call_tool(
+    let text = call_tool(
         stdin,
         &mut reader,
         12,
@@ -248,7 +244,7 @@ async fn test_mcp_extended_tool_coverage() {
 
     // ── Test 4: get-agent-pricing ──
     println!("\n📋 Test 4: get-agent-pricing");
-    let (_resp, text) = call_tool(
+    let text = call_tool(
         stdin,
         &mut reader,
         13,
@@ -267,7 +263,7 @@ async fn test_mcp_extended_tool_coverage() {
 
     // ── Test 5: get-agent-trust-summary ──
     println!("\n📋 Test 5: get-agent-trust-summary");
-    let (_resp, text) = call_tool(
+    let text = call_tool(
         stdin,
         &mut reader,
         14,
@@ -285,7 +281,7 @@ async fn test_mcp_extended_tool_coverage() {
 
     // ── Test 6: search-agents ──
     println!("\n📋 Test 6: search-agents");
-    let (_resp, text) = call_tool(
+    let text = call_tool(
         stdin,
         &mut reader,
         15,
@@ -301,7 +297,7 @@ async fn test_mcp_extended_tool_coverage() {
 
     // ── Test 7: get-top-rated-agents ──
     println!("\n📋 Test 7: get-top-rated-agents");
-    let (_resp, text) = call_tool(
+    let text = call_tool(
         stdin,
         &mut reader,
         16,

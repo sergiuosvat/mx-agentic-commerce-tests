@@ -143,8 +143,10 @@ run_test() {
     fi
 
     log_fail "$duration"
-    echo "  Last 20 lines of output:"
-    tail -20 "${log_file%.log}.retry.log" 2>/dev/null | sed 's/^/    /'
+    echo "  Last 50 lines of output:"
+    tail -50 "${log_file%.log}.retry.log" 2>/dev/null | sed 's/^/    /'
+    echo "  Deployed / health hints from log:"
+    grep -E "Deployed|started on port|health|localhost:[0-9]+" "${log_file%.log}.retry.log" 2>/dev/null | tail -15 | sed 's/^/    /' || true
     RESULTS+=("${RED}❌${NC} | $name | $duration")
     FAIL_COUNT=$((FAIL_COUNT + 1))
     return 1

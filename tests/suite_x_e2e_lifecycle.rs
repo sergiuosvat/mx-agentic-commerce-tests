@@ -8,11 +8,9 @@ mod common;
 use common::{
     wait_for_simulator_ready,
     address_to_bech32, fund_address_on_simulator, generate_blocks_on_simulator,
-    generate_random_private_key, get_simulator_chain_id, IdentityRegistryInteractor,
-    ValidationRegistryInteractor,
+    generate_random_private_key, get_simulator_chain_id, start_facilitator,
+    IdentityRegistryInteractor, ValidationRegistryInteractor,
 };
-
-const FACILITATOR_PORT: u16 = 3080;
 
 /// Suite X: Full x402 Lifecycle with Proof Submission After Settlement
 ///
@@ -89,44 +87,23 @@ async fn test_x402_lifecycle_with_proof() {
     // ── 7. Start Facilitator ──
     let facilitator_pk = generate_random_private_key();
     let db_path = "./facilitator_suite_x.db";
-    let _ = std::fs::remove_file(db_path);
-    let port_str = FACILITATOR_PORT.to_string();
 
-    let env_vars = vec![
-        ("PORT", port_str.as_str()),
-        ("PRIVATE_KEY", facilitator_pk.as_str()),
-        ("REGISTRY_ADDRESS", identity_bech32.as_str()),
-        ("IDENTITY_REGISTRY_ADDRESS", identity_bech32.as_str()),
-        ("VALIDATION_REGISTRY_ADDRESS", validation_bech32.as_str()),
-        ("NETWORK_PROVIDER", gateway_url.as_str()),
-        ("GATEWAY_URL", gateway_url.as_str()),
-        ("CHAIN_ID", chain_id.as_str()),
-        ("SQLITE_DB_PATH", db_path),
-        ("SKIP_SIMULATION", "false"),
-    ];
-
-    pm.start_node_service(
-        "Facilitator",
-        "../x402_integration/x402_facilitator",
-        "dist/index.js",
-        env_vars,
-        FACILITATOR_PORT,
+    let facilitator_url = start_facilitator(
+        &mut pm,
+        &facilitator_pk,
+        &identity_bech32,
+        &gateway_url,
+        &chain_id,
+        &[
+            ("IDENTITY_REGISTRY_ADDRESS", identity_bech32.as_str()),
+            ("VALIDATION_REGISTRY_ADDRESS", validation_bech32.as_str()),
+            ("SQLITE_DB_PATH", db_path),
+            ("SKIP_SIMULATION", "false"),
+        ],
     )
-    .expect("Failed to start facilitator");
+    .await;
 
     let client = reqwest::Client::new();
-    let facilitator_url = format!("http://localhost:{}", FACILITATOR_PORT);
-    for _ in 0..15 {
-        if client
-            .get(format!("{}/health", facilitator_url))
-            .send()
-            .await
-            .is_ok()
-        {
-            break;
-        }
-        sleep(Duration::from_millis(500)).await;
-    }
 
     // ── 8. Buyer Signs x402 Payment ──
     let value_str = "1000000000000000000"; // 1 EGLD
@@ -253,7 +230,6 @@ async fn test_x402_lifecycle_with_proof() {
     }
 
     // Cleanup
-    let _ = std::fs::remove_file(db_path);
     println!("\n✅ Suite X: x402 Lifecycle with Proof — PASSED");
     println!("  Flow: Deploy registries → Register agent → Create job → Submit proof → Settle via x402 → Verify on-chain");
 }

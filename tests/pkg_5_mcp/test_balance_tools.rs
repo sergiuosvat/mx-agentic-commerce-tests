@@ -1,11 +1,10 @@
 use multiversx_sc_snippets::imports::*;
-use mx_agentic_commerce_tests::ProcessManager;
 use serde_json::json;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdout, Command};
 
-use crate::common::{address_to_bech32, get_simulator_chain_id, wait_for_simulator_ready};
+use crate::common::{TestEnv, address_to_bech32, get_simulator_chain_id};
 
 async fn read_json_response(reader: &mut BufReader<ChildStdout>) -> String {
     let mut line = String::new();
@@ -28,14 +27,10 @@ async fn read_json_response(reader: &mut BufReader<ChildStdout>) -> String {
 
 #[tokio::test]
 async fn test_balance_tools() {
-    let mut pm = ProcessManager::new();
-    let port = pm.start_chain_simulator()
-        .expect("Failed to start simulator");
-    let gateway_url = format!("http://localhost:{}", port);
-    wait_for_simulator_ready(&gateway_url).await;
-
-    let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
-    let wallet = interactor.register_wallet(test_wallets::alice()).await;
+    let env = TestEnv::chain_only().await;
+    std::mem::forget(env.pm);
+    let gateway_url = env.gateway_url.clone();
+    let wallet = env.owner.clone();
     let wallet_bech32 = address_to_bech32(&wallet);
 
     // Fund wallet

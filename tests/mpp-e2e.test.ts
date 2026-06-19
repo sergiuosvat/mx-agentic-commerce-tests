@@ -13,6 +13,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
+const RUN_CHAIN_TESTS = process.env.RUN_CHAIN_TESTS === '1';
 
 type MppChallenge = {
   method: string;
@@ -60,16 +61,17 @@ function textFromResult(result: unknown): string {
   return first.text;
 }
 
-describe('Agentic Commerce MPP End-to-End', () => {
+describe('Agentic Commerce MPP', () => {
   let server: Server;
   let client: Client;
-  let moltbotSkill: MoltbotMppSkillLike;
+  let moltbotSkill: MoltbotMppSkillLike | undefined;
 
   const NETWORK_URL =
     process.env.NETWORK_URL || 'https://devnet-api.multiversx.com';
   let senderSigner!: UserSigner;
   let receiverAddress =
     'erd1spyavw0956vq68xj8y4tenjpq2wd5a9p2c6j8gsz7ztycszz7msquz03zt';
+  let hasFundedKeys = false;
 
   beforeAll(async () => {
     const [clientTransport, serverTransport] =
@@ -94,16 +96,13 @@ describe('Agentic Commerce MPP End-to-End', () => {
           '-----BEGIN PRIVATE KEY for' + keys[1],
         );
         receiverAddress = bobSigner.getAddress().bech32();
-        console.log('Loaded local test keys successfully.');
+        hasFundedKeys = true;
       }
     } catch {
-      // Fall back to generated keys below.
+      // Fall back to generated keys for unit-only runs.
     }
 
     if (!senderSigner) {
-      console.warn(
-        'No local test keys found. Using a dynamically generated signer (this will fail on actual network without funds!).',
-      );
       const { Mnemonic } = await import('@multiversx/sdk-wallet');
       const mnemonic = Mnemonic.generate();
       const secretKey = mnemonic.deriveKey(0);
@@ -146,16 +145,18 @@ describe('Agentic Commerce MPP End-to-End', () => {
     );
     await client.connect(clientTransport);
 
-    const { MoltbotMppSkill } = await import(
-      '../../moltbot-starter-kit/src/skills/mpp_skills.js'
-    );
+    if (RUN_CHAIN_TESTS && hasFundedKeys) {
+      const { MoltbotMppSkill } = await import(
+        '../../moltbot-starter-kit/src/skills/mpp_skills.js'
+      );
 
-    const policy = {
-      maxPerTransactionNative: 50000000000000000n,
-      whitelistedCurrencies: ['EGLD'],
-    };
+      const policy = {
+        maxPerTransactionNative: 50000000000000000n,
+        whitelistedCurrencies: ['EGLD'],
+      };
 
-    moltbotSkill = new MoltbotMppSkill(senderSigner, policy, NETWORK_URL);
+      moltbotSkill = new MoltbotMppSkill(senderSigner, policy, NETWORK_URL);
+    }
   });
 
   test('Calling a premium tool without credentials returns 402 McpError', async () => {
@@ -171,65 +172,51 @@ describe('Agentic Commerce MPP End-to-End', () => {
     }
   });
 
-  test(
+  test.skipIf(
+    !RUN_CHAIN_TESTS || !hasFundedKeys,
     'Moltbot interceptor handles 402, executes payment, and retries the tool successfully',
-    async () => {
-      async function robustCallTool(params: ToolCallParams) {
-        try {
-          return await client.callTool(params);
-        } catch (error: unknown) {
-          const e = asMppError(error);
-          const code = e.code;
-          let mppUrl: string | undefined;
+  )(async () => {
+    if (!moltbotSkill) {
+      throw new Error('Chain test setup did not initialize MoltbotMppSkill');
+    }
 
-          if (code === -32042 && e.data?.challenges?.[0]) {
-            const c = e.data.challenges[0];
-            if (c.method === 'multiversx') {
-              mppUrl = `mpp://${c.realm || 'localhost'}/${c.method}/${c.intent}?recipient=${c.request.recipient}&amount=${c.request.amount}&currency=${c.request.currency}`;
-            }
-          } else if (code === 402 && e.data?.mpp_url) {
-            mppUrl = e.data.mpp_url;
-          }
-
-          if (mppUrl) {
-            const paymentProofTxHash = await moltbotSkill.attemptPayment(mppUrl);
-            expect(paymentProofTxHash).toBeDefined();
-
-            return await client.callTool({
-              name: params.name,
-              arguments: {
-                ...(params.arguments ?? {}),
-                _mpp_payment_proof: paymentProofTxHash,
-              },
-            });
-          }
-          throw error;
-        }
-      }
-
+    async function robustCallTool(params: ToolCallParams) {
       try {
-        const result = await robustCallTool({
-          name: 'getPremiumData',
-          arguments: {},
-        });
-        expect(textFromResult(result)).toBe('Premium Data Content!');
+        return await client.callTool(params);
       } catch (error: unknown) {
-        const e = error as Error;
-        console.warn(
-          'End-to-end chain execution failed (likely due to insufficient funds or offline simulator). Error:',
-          e.message,
-        );
-        if (
-          !e.message.includes('Payment transaction failed') &&
-          !e.message.includes('computeBytesForSigning') &&
-          !e.message.includes('lower nonce') &&
-          !e.message.includes('insufficient funds') &&
-          !e.message.includes('failed with status')
-        ) {
-          throw e;
+        const e = asMppError(error);
+        const code = e.code;
+        let mppUrl: string | undefined;
+
+        if (code === -32042 && e.data?.challenges?.[0]) {
+          const c = e.data.challenges[0];
+          if (c.method === 'multiversx') {
+            mppUrl = `mpp://${c.realm || 'localhost'}/${c.method}/${c.intent}?recipient=${c.request.recipient}&amount=${c.request.amount}&currency=${c.request.currency}`;
+          }
+        } else if (code === 402 && e.data?.mpp_url) {
+          mppUrl = e.data.mpp_url;
         }
+
+        if (mppUrl) {
+          const paymentProofTxHash = await moltbotSkill.attemptPayment(mppUrl);
+          expect(paymentProofTxHash).toBeDefined();
+
+          return await client.callTool({
+            name: params.name,
+            arguments: {
+              ...(params.arguments ?? {}),
+              _mpp_payment_proof: paymentProofTxHash,
+            },
+          });
+        }
+        throw error;
       }
-    },
-    20000,
-  );
+    }
+
+    const result = await robustCallTool({
+      name: 'getPremiumData',
+      arguments: {},
+    });
+    expect(textFromResult(result)).toBe('Premium Data Content!');
+  }, 20_000);
 });

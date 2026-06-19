@@ -7,6 +7,7 @@ use tokio::time::{sleep, Duration};
 
 mod common;
 use common::{
+    wait_for_simulator_ready,
     address_to_bech32, create_pem_file, fund_address_on_simulator, generate_blocks_on_simulator,
     generate_random_private_key,
 };
@@ -33,7 +34,7 @@ async fn test_relayed_mpp_facilitator() {
     // 1. Start Chain Simulator
     let port = pm.start_chain_simulator().unwrap(); // .expect("Failed to start Sim");
     let gateway_url = format!("http://localhost:{}", port);
-    sleep(Duration::from_secs(2)).await;
+    wait_for_simulator_ready(&gateway_url).await;
 
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
 
@@ -162,7 +163,7 @@ async fn test_relayed_mpp_facilitator() {
     // Generating blocks to advance epoch because Relayed V3 transactions might be disabled on Epoch 0 in chain simulator
     println!("Advancing epoch to enable Relayed V3 on chain simulator...");
     common::generate_blocks_on_simulator(50, &gateway_url).await;
-    sleep(Duration::from_secs(2)).await;
+    wait_for_simulator_ready(&gateway_url).await;
 
     // ────────────────────────────────────────────
     // 5. CALL /submit_relayed_v3 WITH THE RELAYED PAYLOAD
@@ -183,7 +184,7 @@ async fn test_relayed_mpp_facilitator() {
     
     // Wait for block to produce
     generate_blocks_on_simulator(5, &gateway_url).await;
-    sleep(Duration::from_secs(2)).await;
+    wait_for_simulator_ready(&gateway_url).await;
 
     // 6. Verify Charlie received EGLD
     let charlie_acc_final = interactor.get_account(&charlie_sc_addr).await;

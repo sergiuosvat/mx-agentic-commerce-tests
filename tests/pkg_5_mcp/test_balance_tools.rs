@@ -4,9 +4,8 @@ use serde_json::json;
 use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdout, Command};
-use tokio::time::{sleep, Duration};
 
-use crate::common::{address_to_bech32, get_simulator_chain_id};
+use crate::common::{address_to_bech32, get_simulator_chain_id, wait_for_simulator_ready};
 
 async fn read_json_response(reader: &mut BufReader<ChildStdout>) -> String {
     let mut line = String::new();
@@ -33,7 +32,7 @@ async fn test_balance_tools() {
     let port = pm.start_chain_simulator()
         .expect("Failed to start simulator");
     let gateway_url = format!("http://localhost:{}", port);
-    sleep(Duration::from_secs(2)).await;
+    wait_for_simulator_ready(&gateway_url).await;
 
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
     let wallet = interactor.register_wallet(test_wallets::alice()).await;

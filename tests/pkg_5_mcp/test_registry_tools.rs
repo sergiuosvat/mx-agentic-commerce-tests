@@ -1,4 +1,5 @@
 use crate::common::{
+    wait_for_simulator_ready,
     address_to_bech32, deploy_all_registries, fund_address_on_simulator, get_simulator_chain_id,
 };
 use multiversx_sc_snippets::imports::*;
@@ -39,7 +40,7 @@ async fn test_registry_tools() {
     let port = pm.start_chain_simulator()
         .expect("Failed to start simulator");
     let gateway_url = format!("http://localhost:{}", port);
-    sleep(Duration::from_secs(2)).await;
+    wait_for_simulator_ready(&gateway_url).await;
 
     let chain_id = get_simulator_chain_id(&gateway_url).await;
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);

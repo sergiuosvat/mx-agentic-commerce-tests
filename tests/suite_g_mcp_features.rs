@@ -1,6 +1,5 @@
 use mx_agentic_commerce_tests::ProcessManager;
 use multiversx_sc_snippets::imports::*;
-use tokio::time::{sleep, Duration};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::Command;
 use serde_json::{json, Value};
@@ -8,6 +7,7 @@ use std::process::Stdio;
 use tokio::process::ChildStdout;
 
 mod common;
+use common::wait_for_simulator_ready;
 
 async fn read_json_response(reader: &mut BufReader<ChildStdout>) -> String {
     let mut line = String::new();
@@ -30,7 +30,7 @@ async fn test_mcp_features() {
     let mut pm = ProcessManager::new();
     let port = pm.start_chain_simulator().unwrap(); // .expect("Failed to start Sim");
     let gateway_url = format!("http://localhost:{}", port);
-    sleep(Duration::from_secs(2)).await;
+    wait_for_simulator_ready(&gateway_url).await;
 
     let chain_id = common::get_simulator_chain_id(&gateway_url).await;
     println!("Simulator ChainID: {}", chain_id);

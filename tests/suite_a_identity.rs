@@ -1,12 +1,13 @@
 use identity_registry_interactor::identity_registry_proxy::IdentityRegistryProxy;
+use multiversx_sc::types::ManagedAddress;
 use multiversx_sc_scenario::imports::InterpreterContext;
 use multiversx_sc_snippets::imports::StaticApi;
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
-use tokio::time::{sleep, Duration};
 
 #[path = "common/mod.rs"]
 mod test_utils;
+use test_utils::wait_for_simulator_ready;
 
 
 #[tokio::test]
@@ -15,7 +16,7 @@ async fn test_identity_registry_flow() {
     let port = pm.start_chain_simulator()
         .expect("Failed to start simulator");
     let gateway_url = format!("http://localhost:{}", port);
-    sleep(Duration::from_secs(2)).await;
+    wait_for_simulator_ready(&gateway_url).await;
 
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
 
@@ -127,5 +128,18 @@ async fn test_identity_registry_flow() {
 
     println!("Registered Agent");
 
-    sleep(Duration::from_secs(1)).await;
+    let owner_managed: ManagedAddress<StaticApi> = interactor
+        .query()
+        .to(&new_address)
+        .typed(IdentityRegistryProxy)
+        .get_agent_owner(1u64)
+        .returns(ReturnsResult)
+        .run()
+        .await;
+
+    assert_eq!(
+        owner_managed.to_address(),
+        wallet_alice,
+        "registered agent owner should be alice"
+    );
 }

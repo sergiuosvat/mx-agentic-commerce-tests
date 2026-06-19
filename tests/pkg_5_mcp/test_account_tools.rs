@@ -1,7 +1,6 @@
-use crate::common::{address_to_bech32, get_simulator_chain_id};
+use crate::common::{address_to_bech32, get_simulator_chain_id, wait_for_simulator_ready};
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
-use tokio::time::{sleep, Duration};
 
 #[tokio::test]
 async fn test_account_tools() {
@@ -9,7 +8,7 @@ async fn test_account_tools() {
     let port = pm.start_chain_simulator()
         .expect("Failed to start simulator");
     let gateway_url = format!("http://localhost:{}", port);
-    sleep(Duration::from_secs(2)).await;
+    wait_for_simulator_ready(&gateway_url).await;
 
     let chain_id = get_simulator_chain_id(&gateway_url).await;
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);

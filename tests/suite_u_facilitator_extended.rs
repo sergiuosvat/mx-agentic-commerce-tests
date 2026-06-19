@@ -6,6 +6,7 @@ use tokio::time::{sleep, Duration};
 
 mod common;
 use common::{
+    wait_for_simulator_ready,
     address_to_bech32, fund_address_on_simulator, generate_random_private_key,
     get_simulator_chain_id, IdentityRegistryInteractor, ServiceConfigInput,
 };
@@ -84,7 +85,7 @@ async fn test_facilitator_extended() {
     let port = pm.start_chain_simulator()
         .expect("Failed to start simulator");
     let gateway_url = format!("http://localhost:{}", port);
-    sleep(Duration::from_secs(2)).await;
+    wait_for_simulator_ready(&gateway_url).await;
 
     let chain_id = get_simulator_chain_id(&gateway_url).await;
 

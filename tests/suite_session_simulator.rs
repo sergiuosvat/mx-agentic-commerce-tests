@@ -1,13 +1,13 @@
 use common::mpp_session_mvx_proxy::MppSessionContractProxy;
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
-use tokio::time::{sleep, Duration};
 use common::fund_address_on_simulator;
 
 use ed25519_dalek::{SigningKey, Signer};
 use tiny_keccak::{Hasher, Keccak};
 
 mod common;
+use common::wait_for_simulator_ready;
 
 fn keccak256(data: &[u8]) -> [u8; 32] {
     let mut keccak = Keccak::v256();
@@ -21,9 +21,9 @@ fn keccak256(data: &[u8]) -> [u8; 32] {
 async fn test_session_lifecycle_cs() {
     let mut pm = ProcessManager::new();
     let port = pm.start_chain_simulator().expect("Failed to start simulator");
-    sleep(Duration::from_secs(2)).await;
-
     let gateway_url = format!("http://localhost:{}", port);
+
+    wait_for_simulator_ready(&gateway_url).await;
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
 
     // 1. Setup Wallets (Employer = Alice, Receiver = Bob)

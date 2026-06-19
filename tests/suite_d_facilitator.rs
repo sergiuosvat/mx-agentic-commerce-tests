@@ -5,7 +5,8 @@ use rand::RngCore;
 use bech32::{self, Hrp, Bech32};
 
 mod common;
-use common::{IdentityRegistryInteractor};
+use common::{
+    wait_for_simulator_ready,IdentityRegistryInteractor};
 
 const FACILITATOR_PORT: u16 = 3000;
 
@@ -28,7 +29,7 @@ async fn test_facilitator_flow() {
     // 1. Start Chain Simulator
     let port = pm.start_chain_simulator().unwrap(); // .expect("Failed to start simulator");
     let gateway_url = format!("http://localhost:{}", port);
-    sleep(Duration::from_secs(2)).await;
+    wait_for_simulator_ready(&gateway_url).await;
 
     // 2. Setup Interactor & Users
     let mut interactor = Interactor::new(&gateway_url).await

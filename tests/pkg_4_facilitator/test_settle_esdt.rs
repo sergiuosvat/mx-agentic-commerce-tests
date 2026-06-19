@@ -1,4 +1,5 @@
 use crate::common::{
+    wait_for_simulator_ready,
     fund_address_on_simulator, generate_blocks_on_simulator, generate_random_private_key,
     get_simulator_chain_id, issue_fungible_esdt,
 };
@@ -14,7 +15,7 @@ async fn test_settle_esdt() {
     let mut pm = ProcessManager::new();
     let sim_port = pm.start_chain_simulator().unwrap();
     let gateway_url = format!("http://localhost:{}", sim_port);
-    sleep(Duration::from_secs(2)).await;
+    wait_for_simulator_ready(&gateway_url).await;
 
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
 
@@ -172,7 +173,7 @@ async fn test_settle_esdt() {
 
     // 6. Generate Blocks & Verify
     // Wait for facilitator to broadcast
-    sleep(Duration::from_secs(2)).await;
+    wait_for_simulator_ready(&gateway_url).await;
     generate_blocks_on_simulator(5, &gateway_url).await;
     sleep(Duration::from_secs(5)).await;
 

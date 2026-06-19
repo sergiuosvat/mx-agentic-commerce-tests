@@ -2,9 +2,8 @@ use identity_registry_interactor::identity_registry_proxy::IdentityRegistryProxy
 use multiversx_sc::types::{ManagedAddress, TokenIdentifier};
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
-use tokio::time::{sleep, Duration};
 
-use crate::common::{deploy_all_registries};
+use crate::common::{deploy_all_registries, wait_for_simulator_ready};
 
 /// Test the update_agent flow: register → update name/uri → verify owner unchanged.
 #[tokio::test]
@@ -13,7 +12,7 @@ async fn test_update_agent_flow() {
     let port = pm.start_chain_simulator()
         .expect("Failed to start simulator");
     let gateway_url = format!("http://localhost:{}", port);
-    sleep(Duration::from_secs(2)).await;
+    wait_for_simulator_ready(&gateway_url).await;
 
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
     interactor.generate_blocks_until_all_activations().await;

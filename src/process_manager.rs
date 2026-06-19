@@ -1,4 +1,4 @@
-use std::net::TcpStream;
+use std::net::{TcpListener, TcpStream};
 use std::path::PathBuf;
 use std::process::{Child, Command, Stdio};
 use std::time::Duration;
@@ -6,6 +6,21 @@ use std::time::Duration;
 use std::sync::atomic::{AtomicU16, Ordering};
 
 static NEXT_PORT: AtomicU16 = AtomicU16::new(8085);
+
+/// Optional chain simulator startup settings.
+#[derive(Clone, Debug, Default)]
+pub struct ChainSimulatorOptions {
+    /// When set, passed as `--round-duration` (milliseconds added per generated block).
+    pub round_duration_ms: Option<u64>,
+}
+
+impl ChainSimulatorOptions {
+    pub fn with_round_duration_ms(ms: u64) -> Self {
+        Self {
+            round_duration_ms: Some(ms),
+        }
+    }
+}
 
 #[derive(Default)]
 pub struct ProcessManager {
@@ -18,7 +33,23 @@ impl ProcessManager {
         Self::default()
     }
 
+    /// Bind to port 0 and return the OS-assigned free port.
+    pub fn find_free_port() -> u16 {
+        TcpListener::bind("127.0.0.1:0")
+            .expect("Failed to bind ephemeral port")
+            .local_addr()
+            .expect("Failed to read ephemeral port")
+            .port()
+    }
+
     pub fn start_chain_simulator(&mut self) -> Result<u16, std::io::Error> {
+        self.start_chain_simulator_with_options(ChainSimulatorOptions::default())
+    }
+
+    pub fn start_chain_simulator_with_options(
+        &mut self,
+        options: ChainSimulatorOptions,
+    ) -> Result<u16, std::io::Error> {
         let port = NEXT_PORT.fetch_add(1, Ordering::SeqCst);
         println!("Starting Chain Simulator on port {}...", port);
 
@@ -52,13 +83,25 @@ impl ProcessManager {
             return Ok(port);
         }
 
-        let child = Command::new(&cmd_name)
-            .arg("--server-port")
+        let mut cmd = Command::new(&cmd_name);
+        cmd.arg("--server-port")
             .arg(port.to_string())
             .arg("--rounds-per-epoch")
             .arg("20")
-            .arg("--skip-configs-download")
-            .stdout(Stdio::inherit()) 
+            .arg("--skip-configs-download");
+
+        if let Some(round_duration_ms) = options.round_duration_ms {
+            cmd.arg("--round-duration")
+                .arg(round_duration_ms.to_string());
+            println!(
+                "Chain Simulator round-duration: {}ms (~{}s per block)",
+                round_duration_ms,
+                round_duration_ms / 1000
+            );
+        }
+
+        let child = cmd
+            .stdout(Stdio::inherit())
             .stderr(Stdio::inherit())
             .spawn()
             .inspect_err(|_| {

@@ -1,10 +1,9 @@
 use multiversx_sc::types::ManagedBuffer;
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
-use tokio::time::{sleep, Duration};
-
 mod common;
 use common::{
+    wait_for_simulator_ready,
     address_to_bech32, deploy_all_registries, generate_blocks_on_simulator, ValidationRegistryInteractor,
 };
 
@@ -24,7 +23,7 @@ async fn test_reputation_extended_operations() {
     let port = pm.start_chain_simulator()
         .expect("Failed to start simulator");
     let gateway_url = format!("http://localhost:{}", port);
-    sleep(Duration::from_secs(2)).await;
+    wait_for_simulator_ready(&gateway_url).await;
 
     // Generate 25 blocks to pass epoch 1
     generate_blocks_on_simulator(25, &gateway_url).await;

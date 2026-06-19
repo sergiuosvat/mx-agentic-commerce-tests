@@ -1,9 +1,11 @@
 use multiversx_sc::types::ManagedBuffer;
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
-use tokio::time::{sleep, Duration};
 
-use crate::common::{address_to_bech32, deploy_all_registries, fund_address_on_simulator};
+use crate::common::{
+    address_to_bech32, deploy_all_registries, fund_address_on_simulator,
+    wait_for_simulator_ready,
+};
 
 /// Returns (pm, interactor, reputation_addr, validation_addr, owner, employer, mallory)
 /// NOTE: pm MUST be kept alive for the duration of the test to prevent the simulator from being killed.
@@ -20,7 +22,7 @@ async fn setup_env() -> (
     let port = pm.start_chain_simulator()
         .expect("Failed to start simulator");
     let gateway_url = format!("http://localhost:{}", port);
-    sleep(Duration::from_secs(2)).await;
+    wait_for_simulator_ready(&gateway_url).await;
 
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
 

@@ -1,10 +1,10 @@
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
 use std::process::Stdio;
-use tokio::time::{sleep, Duration};
 
 mod common;
 use common::{
+    wait_for_simulator_ready,
     address_to_bech32, create_pem_file, generate_blocks_on_simulator, generate_random_private_key,
     IdentityRegistryInteractor,
 };
@@ -14,7 +14,7 @@ async fn test_relayed_registration() {
     let mut pm = ProcessManager::new();
     let port = pm.start_chain_simulator().unwrap(); // .expect("Failed to start Sim");
     let gateway_url = format!("http://localhost:{}", port);
-    sleep(Duration::from_secs(2)).await;
+    wait_for_simulator_ready(&gateway_url).await;
 
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
 

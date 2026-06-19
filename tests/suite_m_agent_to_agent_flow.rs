@@ -5,10 +5,9 @@ use std::process::Stdio;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::ChildStdout;
 use tokio::process::Command;
-use tokio::time::{sleep, Duration};
-
 mod common;
-use common::{IdentityRegistryInteractor};
+use common::{
+    wait_for_simulator_ready,IdentityRegistryInteractor};
 
 async fn read_json_response(reader: &mut BufReader<ChildStdout>) -> String {
     let mut line = String::new();
@@ -87,7 +86,7 @@ async fn test_agent_to_agent_discovery() {
     let port = pm.start_chain_simulator()
         .expect("Failed to start simulator");
     let gateway_url = format!("http://localhost:{}", port);
-    sleep(Duration::from_secs(2)).await;
+    wait_for_simulator_ready(&gateway_url).await;
 
     let chain_id = common::get_simulator_chain_id(&gateway_url).await;
     println!("Simulator ChainID: {}", chain_id);

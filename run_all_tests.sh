@@ -2,43 +2,47 @@
 #
 # run_all_tests.sh — Full Ecosystem Test Runner
 #
-# Runs ALL tests across the agentic-payments ecosystem sequentially
-# with proper port cleanup, retry logic, and timing.
+# Runs integration tests sequentially with port cleanup, retry logic, and timing.
 #
 # Usage:
-#   ./run_all_tests.sh              # Run everything
-#   ./run_all_tests.sh --suites     # Run only chain-sim suites (A-T)
-#   ./run_all_tests.sh --offchain   # Run only off-chain suites (U-Y)
-#   ./run_all_tests.sh --ts         # Run only TypeScript service tests
-#   ./run_all_tests.sh --rust       # Run only mx-8004 Rust SC tests
-#   ./run_all_tests.sh --pkg        # Run only package-level tests (pkg_1-9)
+#   ./run_all_tests.sh              # TS unit + chain-sim suites + off-chain suites
+#   ./run_all_tests.sh --suites     # Chain-sim suites only (A–T, Z, session)
+#   ./run_all_tests.sh --offchain   # Off-chain suites only (U–Y)
+#   ./run_all_tests.sh --ts         # TypeScript tests (unit + optional chain)
+#   ./run_all_tests.sh --rust       # mx-8004 smart contract tests
+#   ./run_all_tests.sh --pkg        # Package-level tests (pkg_1–9, chain-only)
+#   ./run_all_tests.sh --all        # Everything including pkg + sibling TS services
 #
+# Environment:
+#   RUN_CHAIN_TESTS=1               Enable on-chain MPP payment test (needs funded keys)
+#   FAIL_ON_RETRY=1                 Exit non-zero if any suite passed only after retry
 
 set -euo pipefail
 
-# ─── Configuration ────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SIM_PORT=8085
-MAX_PORT_WAIT=30        # seconds to wait for port release
-RETRY_DELAY=5           # seconds before retry
-COOLDOWN=3              # seconds between suites
+MAX_PORT_WAIT=30
+RETRY_DELAY=5
+COOLDOWN=3
+LOG_DIR="$SCRIPT_DIR/target/test-logs"
+FAIL_ON_RETRY="${FAIL_ON_RETRY:-0}"
+CARGO_TEST_FLAGS="-- --test-threads=1 --nocapture"
 
-# Colors
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 BOLD='\033[1m'
-NC='\033[0m' # No Color
+NC='\033[0m'
 
-# ─── Results tracking ────────────────────────────────────────────
 declare -a RESULTS=()
 PASS_COUNT=0
 FAIL_COUNT=0
 RETRY_COUNT=0
+RETRY_PASS_COUNT=0
 
-# ─── Helper functions ────────────────────────────────────────────
+mkdir -p "$LOG_DIR"
 
 log_header() {
     echo ""
@@ -63,22 +67,19 @@ log_retry() {
     echo -e "  ${YELLOW}🔄 RETRY${NC} ($1)"
 }
 
-# Kill all chain-simulator and related test processes
 kill_test_processes() {
     pkill -f "mx-chain-simulator-go" 2>/dev/null || true
-    # Kill any node processes on test ports (facilitator, relayer, moltbot, MCP)
-    for port in $SIM_PORT 3000 3001 3002 3004 4000; do
-        lsof -ti:$port 2>/dev/null | xargs kill -9 2>/dev/null || true
+    for port in $SIM_PORT 3000 3001 3002 3004 3006 4000; do
+        lsof -ti:"$port" 2>/dev/null | xargs kill -9 2>/dev/null || true
     done
 }
 
-# Wait until a port is free
 wait_for_port_free() {
     local port=$1
     local max_wait=${2:-$MAX_PORT_WAIT}
     local waited=0
 
-    while [ $waited -lt $max_wait ]; do
+    while [ "$waited" -lt "$max_wait" ]; do
         if ! nc -z 127.0.0.1 "$port" 2>/dev/null; then
             return 0
         fi
@@ -87,77 +88,93 @@ wait_for_port_free() {
     done
 
     echo -e "  ${YELLOW}⚠ Port $port still occupied after ${max_wait}s${NC}"
-    # Force kill anything on the port
     lsof -ti:"$port" 2>/dev/null | xargs kill -9 2>/dev/null || true
     sleep 2
 }
 
-# Run a single test suite with retry logic
-# Arguments: $1=name, $2=command, $3=working_dir
+# $1=name $2=command $3=cwd
 run_test() {
     local name="$1"
     local cmd="$2"
     local cwd="${3:-$SCRIPT_DIR}"
+    local slug
+    slug="$(echo "$name" | tr ' /—' '___' | tr -cd '[:alnum:]_-')"
+    local log_file="$LOG_DIR/${slug}.log"
     local start_time end_time duration exit_code
 
     log_suite "$name"
 
     start_time=$(date +%s)
     set +e
-    (cd "$cwd" && eval "$cmd") > /tmp/test_output_$$.log 2>&1
+    (cd "$cwd" && eval "$cmd") >"$log_file" 2>&1
     exit_code=$?
     set -e
     end_time=$(date +%s)
     duration="$((end_time - start_time))s"
 
-    if [ $exit_code -eq 0 ]; then
+    if [ "$exit_code" -eq 0 ]; then
         log_pass "$duration"
         RESULTS+=("${GREEN}✅${NC} | $name | $duration")
         PASS_COUNT=$((PASS_COUNT + 1))
         return 0
     fi
 
-    # First failure — retry once after cleanup
-    log_retry "failed, retrying after cleanup..."
+    log_retry "failed, retrying after cleanup (see $log_file)..."
     RETRY_COUNT=$((RETRY_COUNT + 1))
 
     kill_test_processes
-    wait_for_port_free $SIM_PORT
-    sleep $RETRY_DELAY
+    wait_for_port_free "$SIM_PORT"
+    sleep "$RETRY_DELAY"
 
     start_time=$(date +%s)
     set +e
-    (cd "$cwd" && eval "$cmd") > /tmp/test_output_retry_$$.log 2>&1
+    (cd "$cwd" && eval "$cmd") >"${log_file%.log}.retry.log" 2>&1
     exit_code=$?
     set -e
     end_time=$(date +%s)
     duration="$((end_time - start_time))s"
 
-    if [ $exit_code -eq 0 ]; then
+    if [ "$exit_code" -eq 0 ]; then
         log_pass "$duration (retry)"
         RESULTS+=("${YELLOW}🔄${NC} | $name | $duration (retry)")
         PASS_COUNT=$((PASS_COUNT + 1))
+        RETRY_PASS_COUNT=$((RETRY_PASS_COUNT + 1))
         return 0
     fi
 
     log_fail "$duration"
     echo "  Last 20 lines of output:"
-    tail -20 /tmp/test_output_retry_$$.log 2>/dev/null | sed 's/^/    /'
+    tail -20 "${log_file%.log}.retry.log" 2>/dev/null | sed 's/^/    /'
     RESULTS+=("${RED}❌${NC} | $name | $duration")
     FAIL_COUNT=$((FAIL_COUNT + 1))
     return 1
 }
 
-# Cleanup between chain-sim suites
 between_suites() {
-    wait_for_port_free $SIM_PORT 10
-    sleep $COOLDOWN
+    wait_for_port_free "$SIM_PORT" 10
+    sleep "$COOLDOWN"
 }
 
-# ─── Test Groups ──────────────────────────────────────────────────
+run_mpp_typescript_tests() {
+    log_header "MPP TypeScript Tests (this repo)"
 
-run_typescript_tests() {
-    log_header "TypeScript Service Unit Tests"
+    if [ ! -d "$SCRIPT_DIR/node_modules" ]; then
+        info="Installing npm dependencies..."
+        echo -e "  ${BLUE}ℹ${NC} $info"
+        (cd "$SCRIPT_DIR" && npm install --silent)
+    fi
+
+    run_test "TS: MPP unit (402 challenge)" "npm run test:unit" "$SCRIPT_DIR" || true
+
+    if [ "${RUN_CHAIN_TESTS:-0}" = "1" ]; then
+        run_test "TS: MPP chain payment" "npm run test:chain" "$SCRIPT_DIR" || true
+    else
+        echo -e "  ${YELLOW}⏭ Skipped MPP chain test (set RUN_CHAIN_TESTS=1 to enable)${NC}"
+    fi
+}
+
+run_typescript_service_tests() {
+    log_header "TypeScript Service Unit Tests (sibling repos)"
 
     local services=(
         "moltbot-starter-kit|npm test|$ROOT_DIR/moltbot-starter-kit"
@@ -183,16 +200,15 @@ run_rust_sc_tests() {
 
     local mx8004_dir="$ROOT_DIR/mx-8004"
     if [ -d "$mx8004_dir" ]; then
-        run_test "Rust SC: mx-8004 (18 tests)" "cargo test 2>&1" "$mx8004_dir" || true
+        run_test "Rust SC: mx-8004" "cargo test $CARGO_TEST_FLAGS" "$mx8004_dir" || true
     fi
 }
 
 run_chain_sim_suites() {
-    log_header "Chain-Sim Integration Suites (A–T)"
+    log_header "Chain-Sim Integration Suites (A–T, Z, session)"
 
-    # Clean start
     kill_test_processes
-    wait_for_port_free $SIM_PORT
+    wait_for_port_free "$SIM_PORT"
     sleep 2
 
     local suites=(
@@ -215,11 +231,13 @@ run_chain_sim_suites() {
         "Suite R — Reputation Extended|suite_r_reputation_extended"
         "Suite S — Full Economy Loop|suite_s_full_economy_loop"
         "Suite T — MCP Extended|suite_t_mcp_extended"
+        "Suite Z — MPP Facilitator|suite_z_mpp_facilitator"
+        "Suite Session — Simulator|suite_session_simulator"
     )
 
     for suite in "${suites[@]}"; do
         IFS='|' read -r name test_name <<< "$suite"
-        run_test "$name" "cargo test --test $test_name -- --nocapture 2>&1" "$SCRIPT_DIR" || true
+        run_test "$name" "cargo test --test $test_name $CARGO_TEST_FLAGS" "$SCRIPT_DIR" || true
         between_suites
     done
 }
@@ -227,9 +245,8 @@ run_chain_sim_suites() {
 run_offchain_suites() {
     log_header "Off-Chain Integration Suites (U–Y)"
 
-    # Clean start
     kill_test_processes
-    wait_for_port_free $SIM_PORT
+    wait_for_port_free "$SIM_PORT"
     sleep 2
 
     local suites=(
@@ -244,17 +261,16 @@ run_offchain_suites() {
 
     for suite in "${suites[@]}"; do
         IFS='|' read -r name test_name <<< "$suite"
-        run_test "$name" "cargo test --test $test_name -- --nocapture 2>&1" "$SCRIPT_DIR" || true
+        run_test "$name" "cargo test --test $test_name $CARGO_TEST_FLAGS" "$SCRIPT_DIR" || true
         between_suites
     done
 }
 
 run_package_tests() {
-    log_header "Package-Level Tests (pkg_1 – pkg_9)"
+    log_header "Package-Level Tests (pkg_1 – pkg_9, chain-only)"
 
-    # Clean start
     kill_test_processes
-    wait_for_port_free $SIM_PORT
+    wait_for_port_free "$SIM_PORT"
     sleep 2
 
     local pkgs=(
@@ -271,12 +287,10 @@ run_package_tests() {
 
     for pkg in "${pkgs[@]}"; do
         IFS='|' read -r name test_name <<< "$pkg"
-        run_test "$name" "cargo test --test $test_name -- --nocapture 2>&1" "$SCRIPT_DIR" || true
+        run_test "$name" "cargo test --test $test_name $CARGO_TEST_FLAGS" "$SCRIPT_DIR" || true
         between_suites
     done
 }
-
-# ─── Summary ──────────────────────────────────────────────────────
 
 print_summary() {
     log_header "Test Results Summary"
@@ -290,27 +304,32 @@ print_summary() {
     echo ""
     echo -e "${BOLD}Total:${NC} $((PASS_COUNT + FAIL_COUNT)) tests"
     echo -e "${GREEN}Passed:${NC} $PASS_COUNT"
-    if [ $FAIL_COUNT -gt 0 ]; then
+    if [ "$FAIL_COUNT" -gt 0 ]; then
         echo -e "${RED}Failed:${NC} $FAIL_COUNT"
     fi
-    if [ $RETRY_COUNT -gt 0 ]; then
-        echo -e "${YELLOW}Retried:${NC} $RETRY_COUNT"
+    if [ "$RETRY_COUNT" -gt 0 ]; then
+        echo -e "${YELLOW}Retried:${NC} $RETRY_COUNT (${RETRY_PASS_COUNT} recovered)"
     fi
+    echo -e "${BOLD}Logs:${NC} $LOG_DIR"
     echo ""
 
-    if [ $FAIL_COUNT -eq 0 ]; then
-        echo -e "${GREEN}${BOLD}🎉 ALL TESTS PASSED!${NC}"
+    local exit_code=0
+    if [ "$FAIL_COUNT" -gt 0 ]; then
+        echo -e "${RED}${BOLD}⚠ SOME TESTS FAILED — see logs in $LOG_DIR${NC}"
+        exit_code=1
+    elif [ "$FAIL_ON_RETRY" = "1" ] && [ "$RETRY_PASS_COUNT" -gt 0 ]; then
+        echo -e "${YELLOW}${BOLD}⚠ TESTS PASSED AFTER RETRY — investigate flakiness${NC}"
+        exit_code=1
     else
-        echo -e "${RED}${BOLD}⚠ SOME TESTS FAILED — see output above${NC}"
-        exit 1
+        echo -e "${GREEN}${BOLD}🎉 ALL TESTS PASSED!${NC}"
     fi
-}
 
-# ─── Main ─────────────────────────────────────────────────────────
+    return "$exit_code"
+}
 
 TOTAL_START=$(date +%s)
 
-case "${1:-all}" in
+case "${1:-default}" in
     --suites)
         run_chain_sim_suites
         ;;
@@ -318,7 +337,7 @@ case "${1:-all}" in
         run_offchain_suites
         ;;
     --ts)
-        run_typescript_tests
+        run_mpp_typescript_tests
         ;;
     --rust)
         run_rust_sc_tests
@@ -326,12 +345,20 @@ case "${1:-all}" in
     --pkg)
         run_package_tests
         ;;
-    all|*)
-        run_typescript_tests
+    --all)
+        run_mpp_typescript_tests
+        run_typescript_service_tests
         run_rust_sc_tests
         run_chain_sim_suites
         run_offchain_suites
         run_package_tests
+        ;;
+    default|*)
+        # Default: cross-service suites without duplicating pkg_* chain-only tests
+        run_mpp_typescript_tests
+        run_rust_sc_tests
+        run_chain_sim_suites
+        run_offchain_suites
         ;;
 esac
 
@@ -339,8 +366,9 @@ TOTAL_END=$(date +%s)
 TOTAL_DURATION=$((TOTAL_END - TOTAL_START))
 
 print_summary
+SUMMARY_EXIT=$?
+
 echo -e "\nTotal wall time: ${BOLD}${TOTAL_DURATION}s${NC} ($((TOTAL_DURATION / 60))m $((TOTAL_DURATION % 60))s)"
 
-# Cleanup
 kill_test_processes 2>/dev/null || true
-rm -f /tmp/test_output_$$.log /tmp/test_output_retry_$$.log
+exit "$SUMMARY_EXIT"

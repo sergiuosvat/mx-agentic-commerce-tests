@@ -1,9 +1,8 @@
 use multiversx_sc::types::ManagedBuffer;
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
-use tokio::time::{sleep, Duration};
 
-use crate::common::{EscrowInteractor, EscrowStatus};
+use crate::common::{EscrowInteractor, EscrowStatus, wait_for_simulator_ready};
 
 /// S-007: Edge case error testing
 /// - Duplicate deposit on same job → "Escrow already exists"
@@ -16,7 +15,7 @@ async fn test_escrow_error_edge_cases() {
     let port = pm.start_chain_simulator()
         .expect("Failed to start simulator");
     let gateway_url = format!("http://localhost:{}", port);
-    sleep(Duration::from_secs(2)).await;
+    wait_for_simulator_ready(&gateway_url).await;
 
     let mut interactor = Interactor::new(&gateway_url).await.use_chain_simulator(true);
     let owner = interactor.register_wallet(test_wallets::alice()).await;

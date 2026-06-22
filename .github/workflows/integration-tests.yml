@@ -13,6 +13,11 @@ jobs:
   integration:
     runs-on: ubuntu-latest
     timeout-minutes: 180
+    env:
+      COOLDOWN: 8
+      MAX_PORT_WAIT: 45
+      RETRY_DELAY: 8
+      FAIL_ON_RETRY: 1
 
     steps:
       - uses: actions/checkout@v4
@@ -39,10 +44,11 @@ jobs:
       - name: Setup ecosystem
         run: ./setup.sh
 
+      - name: Install test repo npm dependencies
+        run: npm ci
+
       - name: Run integration tests (one suite/package at a time)
         run: ./run_all_tests.sh --integration
-        env:
-          FAIL_ON_RETRY: 1
 
       - name: Upload test logs on failure
         if: failure()

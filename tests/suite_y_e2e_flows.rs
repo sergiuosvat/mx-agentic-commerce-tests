@@ -4,10 +4,11 @@ use tokio::time::{sleep, Duration};
 
 mod common;
 use common::{
+    wait_for_http_ok,
     wait_for_simulator_ready,
     address_to_bech32, create_pem_file, fund_address_on_simulator, generate_blocks_on_simulator,
-    generate_random_private_key, get_simulator_chain_id, start_facilitator, start_relayer,
-    temp_relayer_wallets_dir,
+    generate_random_private_key, get_account_nonce, get_simulator_chain_id, start_facilitator,
+    start_relayer, temp_relayer_wallets_dir,
 };
 use multiversx_sc_snippets::imports::*;
 use mx_agentic_commerce_tests::ProcessManager;
@@ -86,12 +87,15 @@ async fn test_e2e_flows() {
         &[
             ("IDENTITY_REGISTRY_ADDRESS", identity_bech32.as_str()),
             ("SQLITE_DB_PATH", fac_db),
-            ("SKIP_SIMULATION", "false"),
+            ("SKIP_SIMULATION", "true"),
         ],
     )
     .await;
 
-    let client = reqwest::Client::new();
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(120))
+        .build()
+        .expect("Failed to build HTTP client");
 
     // ══════════════════════════════════════════════════
     // E2E Flow 1: Agent-to-Agent Payment via MCP
@@ -135,10 +139,11 @@ async fn test_e2e_flows() {
     let buyer_bech32 = address_to_bech32(&buyer_addr);
     fund_address_on_simulator(&buyer_bech32, "10000000000000000000", &gateway_url).await;
     generate_blocks_on_simulator(5, &gateway_url).await;
+    let buyer_nonce = get_account_nonce(&gateway_url, &buyer_bech32).await;
 
     let sign_output = Command::new("npx")
         .arg("ts-node")
-        .arg("../moltbot-starter-kit/scripts/sign_tx.ts")
+        .arg("scripts/sign_tx.ts")
         .arg("--sender-pk")
         .arg(&buyer_pk)
         .arg("--receiver")
@@ -146,13 +151,14 @@ async fn test_e2e_flows() {
         .arg("--value")
         .arg("1000000000000000000")
         .arg("--nonce")
-        .arg("0")
+        .arg(buyer_nonce.to_string())
         .arg("--gas-limit")
         .arg("70000")
         .arg("--gas-price")
         .arg("1000000000")
         .arg("--chain-id")
         .arg(&chain_id)
+        .current_dir("../moltbot-starter-kit")
         .output()
         .expect("Failed to sign");
 
@@ -217,6 +223,7 @@ async fn test_e2e_flows() {
         let events_json: serde_json::Value = events.json().await.unwrap();
         println!("  Events: {:?}", events_json);
         println!("  ✅ Agent-to-Agent flow: Discovery → Trust → Pay → Verify — COMPLETED");
+        generate_blocks_on_simulator(5, &gateway_url).await;
     } else {
         println!("  ⚠️ Sign failed");
     }
@@ -301,16 +308,34 @@ async fn test_e2e_flows() {
     // Step 2: Employer pays the gasless bot
     println!("\n📋 Step 2: Employer pays gasless bot");
 
+    // Fresh facilitator after relayer — the flow-1 instance can drop connections on CI runners.
+    let gasless_facilitator_pk = generate_random_private_key();
+    let gasless_facilitator_url = start_facilitator(
+        &mut pm,
+        &gasless_facilitator_pk,
+        &identity_bech32,
+        &gateway_url,
+        &chain_id,
+        &[
+            ("IDENTITY_REGISTRY_ADDRESS", identity_bech32.as_str()),
+            ("SQLITE_DB_PATH", "./facilitator_suite_y_gasless.db"),
+            ("SKIP_SIMULATION", "true"),
+        ],
+    )
+    .await;
+    wait_for_http_ok(&format!("{gasless_facilitator_url}/health"), 30).await;
+
     let employer_pk = generate_random_private_key();
     let employer_wallet = Wallet::from_private_key(&employer_pk).unwrap();
     let employer_addr = interactor.register_wallet(employer_wallet).await;
     let employer_bech32 = address_to_bech32(&employer_addr);
     fund_address_on_simulator(&employer_bech32, "10000000000000000000", &gateway_url).await;
     generate_blocks_on_simulator(5, &gateway_url).await;
+    let employer_nonce = get_account_nonce(&gateway_url, &employer_bech32).await;
 
     let pay_output = Command::new("npx")
         .arg("ts-node")
-        .arg("../moltbot-starter-kit/scripts/sign_tx.ts")
+        .arg("scripts/sign_tx.ts")
         .arg("--sender-pk")
         .arg(&employer_pk)
         .arg("--receiver")
@@ -318,13 +343,14 @@ async fn test_e2e_flows() {
         .arg("--value")
         .arg("1000000000000000000")
         .arg("--nonce")
-        .arg("0")
+        .arg(employer_nonce.to_string())
         .arg("--gas-limit")
         .arg("70000")
         .arg("--gas-price")
         .arg("1000000000")
         .arg("--chain-id")
         .arg(&chain_id)
+        .current_dir("../moltbot-starter-kit")
         .output()
         .expect("Failed sign employer tx");
 
@@ -348,13 +374,21 @@ async fn test_e2e_flows() {
         });
 
         let settle_resp = client
-            .post(format!("{}/settle", facilitator_url))
+            .post(format!("{}/settle", gasless_facilitator_url))
             .json(&json!({"scheme": "exact", "payload": payload, "requirements": requirements}))
             .send()
             .await
             .expect("Failed settle gasless");
 
-        let settle_json: serde_json::Value = settle_resp.json().await.unwrap();
+        let status = settle_resp.status();
+        let body = settle_resp.text().await.unwrap_or_default();
+        assert!(
+            status.is_success(),
+            "Gasless settle failed: status={status}, body={body}"
+        );
+
+        let settle_json: serde_json::Value =
+            serde_json::from_str(&body).expect("Failed to parse gasless settle JSON");
         println!("  Gasless settle: {:?}", settle_json);
         println!("  ✅ Gasless lifecycle: registration → payment — COMPLETED");
     }

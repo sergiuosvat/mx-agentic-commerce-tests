@@ -18,15 +18,17 @@
 #   RUN_CHAIN_TESTS=1               Enable on-chain MPP payment test (needs funded keys)
 #   FAIL_ON_RETRY=1                 Exit non-zero if any suite passed only after retry
 #   STOP_ON_FAIL=1                  Stop after the first failing suite/package
+#   COOLDOWN=8                      Seconds between suites (raise on CI runners)
+#   MAX_PORT_WAIT=45                Port cleanup timeout (raise on CI runners)
 
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 ROOT_DIR="$(cd "$SCRIPT_DIR/.." && pwd)"
 SIM_PORT=8085
-MAX_PORT_WAIT=30
-RETRY_DELAY=5
-COOLDOWN=3
+MAX_PORT_WAIT="${MAX_PORT_WAIT:-30}"
+RETRY_DELAY="${RETRY_DELAY:-5}"
+COOLDOWN="${COOLDOWN:-3}"
 LOG_DIR="$SCRIPT_DIR/target/test-logs"
 FAIL_ON_RETRY="${FAIL_ON_RETRY:-0}"
 STOP_ON_FAIL="${STOP_ON_FAIL:-0}"

@@ -50,11 +50,13 @@ async fn test_relayed_mpp_facilitator() {
     let admin_bech32 = address_to_bech32(&admin);
     fund_address_on_simulator(&admin_bech32, "100000000000000000000000", &gateway_url).await; 
 
-    // 2. Setup Alice's wallet (which is used as Relayer by mpp-facilitator-mvx defaults)
+    // 2. Setup relayer wallet (facilitator now requires RELAYER_PEM_PATH)
     let project_root = std::env::current_dir().unwrap();
-    let alice = interactor.register_wallet(test_wallets::alice()).await;
-    let relayer_sc_addr = alice.clone();
+    let relayer_pk = generate_random_private_key();
+    let relayer_wallet = Wallet::from_private_key(&relayer_pk).unwrap();
+    let relayer_sc_addr = Address::from_slice(relayer_wallet.to_address().as_bytes());
     let relayer_bech32 = address_to_bech32(&relayer_sc_addr);
+    let relayer_pem = create_temp_pem_file("suite_z_relayer", &relayer_pk, &relayer_bech32);
 
     // Fund relayer
     interactor
@@ -106,10 +108,13 @@ async fn test_relayed_mpp_facilitator() {
         &mut pm,
         &gateway_url,
         &chain_id,
-        &[(
-            "MPP_SECRET_KEY",
-            "test-secret-key-12345678901234567890123456789012",
-        )],
+        &[
+            (
+                "MPP_SECRET_KEY",
+                "test-secret-key-12345678901234567890123456789012",
+            ),
+            ("RELAYER_PEM_PATH", relayer_pem.as_str()),
+        ],
     )
     .await;
 

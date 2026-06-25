@@ -3,7 +3,7 @@ use multiversx_sc_snippets::imports::Wallet;
 
 mod common;
 use common::{
-    address_to_bech32, generate_random_private_key, get_simulator_chain_id,
+    address_to_bech32, create_temp_pem_file, generate_random_private_key, get_simulator_chain_id,
     mpp_facilitator_available, start_mpp_facilitator, wait_for_simulator_ready,
 };
 
@@ -31,12 +31,13 @@ async fn test_mpp_facilitator_session_and_subscription_resources() {
         let wallet = Wallet::from_private_key(&relayer_pk).expect("wallet");
         address_to_bech32(&wallet.to_address())
     };
+    let relayer_pem = create_temp_pem_file("suite_aa_relayer", &relayer_pk, &recipient_addr);
     let mpp_url = start_mpp_facilitator(
         &mut pm,
         &gateway_url,
         &chain_id,
         &[
-            ("RELAYER_PRIVATE_KEY", relayer_pk.as_str()),
+            ("RELAYER_PEM_PATH", relayer_pem.as_str()),
             ("MPP_SECRET_KEY", "integration-test-secret"),
             ("MPP_DEFAULT_AMOUNT", "1000000000000000000"),
             ("MPP_DEFAULT_RECIPIENT", recipient_addr.as_str()),

@@ -6,7 +6,8 @@ mod common;
 use common::{
     start_relayer, temp_relayer_wallets_dir,
     wait_for_simulator_ready,
-    address_to_bech32, create_pem_file, create_temp_pem_file, generate_blocks_on_simulator,
+    address_to_bech32, create_pem_file, create_temp_pem_file, fund_address_on_simulator,
+    generate_blocks_on_simulator,
     generate_random_private_key, IdentityRegistryInteractor,
 };
 
@@ -23,6 +24,10 @@ async fn test_relayed_registration() {
     println!("Simulator ChainID: {}", chain_id);
 
     let alice = interactor.register_wallet(test_wallets::alice()).await;
+
+    // Chain sim starts Alice with ~10 EGLD; funding 30 relayers needs a larger balance.
+    let alice_bech32 = address_to_bech32(&alice);
+    fund_address_on_simulator(&alice_bech32, "100000000000000000000000", &gateway_url).await;
 
     // Deploy Registry
     let registry = IdentityRegistryInteractor::init(&mut interactor, alice.clone()).await;
@@ -66,7 +71,7 @@ async fn test_relayed_registration() {
     }
 
     // Ensure cross-shard EGLD transfers to relayer wallets are finalized
-    generate_blocks_on_simulator(10, &gateway_url).await;
+    generate_blocks_on_simulator(30, &gateway_url).await;
 
     let relayer_url = start_relayer(
         &mut pm,

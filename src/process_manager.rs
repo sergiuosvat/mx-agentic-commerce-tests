@@ -50,8 +50,12 @@ impl ProcessManager {
         &mut self,
         options: ChainSimulatorOptions,
     ) -> Result<u16, std::io::Error> {
-        let port = NEXT_PORT.fetch_add(1, Ordering::SeqCst);
-        println!("Starting Chain Simulator on port {}...", port);
+        let mut port = NEXT_PORT.fetch_add(1, Ordering::SeqCst);
+        while TcpStream::connect(format!("127.0.0.1:{port}")).is_ok() {
+            println!("Port {port} occupied — trying next port.");
+            port = NEXT_PORT.fetch_add(1, Ordering::SeqCst);
+        }
+        println!("Starting Chain Simulator on port {port}...");
 
         let mut cmd_name = "mx-chain-simulator-go".to_string();
 
@@ -76,13 +80,7 @@ impl ProcessManager {
             }
         }
 
-        // Check if port is already listening (idempotent start)
-        if TcpStream::connect(format!("127.0.0.1:{}", port)).is_ok() {
-            println!("Chain Simulator already running on port {}.", port);
-            self.simulator_ports.push(port);
-            return Ok(port);
-        }
-
+        // Always start a fresh simulator owned by this ProcessManager.
         let mut cmd = Command::new(&cmd_name);
         cmd.arg("--server-port")
             .arg(port.to_string())

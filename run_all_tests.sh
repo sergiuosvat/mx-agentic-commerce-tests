@@ -251,6 +251,10 @@ run_chain_sim_suites() {
         "Suite T — MCP Extended|suite_t_mcp_extended"
         "Suite Z — MPP Facilitator|suite_z_mpp_facilitator"
         "Suite Session — Simulator|suite_session_simulator"
+        "Suite Session Extended|suite_session_extended"
+        "Suite AA — MPP Facilitator Resources|suite_aa_mpp_facilitator_resources"
+        "Suite EC — Facilitator Offline|suite_ec_facilitator_down"
+        "Suite V3 — Relayer Quota|suite_v3_relayer_quota"
     )
 
     for suite in "${suites[@]}"; do

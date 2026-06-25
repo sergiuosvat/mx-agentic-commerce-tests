@@ -90,6 +90,11 @@ clone_if_missing "mppx-multiversx" \
     "$ROOT_DIR/mppx-multiversx" \
     "https://github.com/${GH_ORG}/mppx-multiversx.git"
 
+# MPP Facilitator (NestJS — used by suite_z and suite_aa)
+clone_if_missing "mpp-facilitator-mvx" \
+    "$ROOT_DIR/mpp-facilitator-mvx" \
+    "https://github.com/${GH_ORG}/mpp-facilitator-mvx.git"
+
 # x402 Integration directory
 mkdir -p "$ROOT_DIR/x402_integration"
 
@@ -226,10 +231,21 @@ ensure_mppx_ready() {
     tar -xzf "$staging"/mppx-*.tgz -C "$staging"
     cp -a "$staging/package/." "$mppx_dir/"
     rm -rf "$staging"
+    (cd "$mppx_dir" && npm install --omit=dev --silent)
     ok "mppx@${MPP_VERSION} installed"
 }
 
+ensure_mppx_deps() {
+    local mppx_dir="$ROOT_DIR/mppx"
+    if [ -d "$mppx_dir" ] && [ ! -d "$mppx_dir/node_modules/ox" ]; then
+        info "Installing mppx runtime dependencies..."
+        (cd "$mppx_dir" && npm install --omit=dev --silent)
+        ok "mppx dependencies installed"
+    fi
+}
+
 ensure_mppx_ready
+ensure_mppx_deps
 
 if [ -d "$ROOT_DIR/mppx-multiversx" ]; then
     info "Building mppx-multiversx..."
@@ -257,6 +273,21 @@ build_node_service() {
 }
 
 build_node_service "moltbot-starter-kit"    "$ROOT_DIR/moltbot-starter-kit"
+
+if [ -d "$ROOT_DIR/mpp-facilitator-mvx" ]; then
+    info "Building mpp-facilitator-mvx..."
+    (
+        cd "$ROOT_DIR/mpp-facilitator-mvx"
+        npm install --legacy-peer-deps --silent
+        # session.service.ts imports js-sha3 but it is not listed in package.json yet
+        npm install js-sha3 --legacy-peer-deps --silent
+        npm run build --silent
+        DATABASE_URL="file:./prisma/integration-test.db" npx prisma db push --skip-generate
+    )
+    ok "mpp-facilitator-mvx built"
+else
+    warn "mpp-facilitator-mvx: directory not found — skipping"
+fi
 build_node_service "multiversx-mcp-server"  "$ROOT_DIR/multiversx-mcp-server"
 build_node_service "openclaw-relayer"       "$ROOT_DIR/x402_integration/multiversx-openclaw-relayer"
 build_node_service "x402-facilitator"       "$ROOT_DIR/x402_integration/x402_facilitator"

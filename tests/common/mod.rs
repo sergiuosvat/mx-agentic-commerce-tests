@@ -7,6 +7,7 @@ use multiversx_sc::types::{Address, CodeMetadata, EgldOrEsdtTokenIdentifier, Man
 use multiversx_sc_snippets::imports::*;
 
 pub mod escrow_interactor;
+pub mod mpp_session_helpers;
 pub mod mpp_session_mvx_proxy;
 pub mod services;
 pub mod simulator;

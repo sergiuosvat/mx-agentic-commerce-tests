@@ -12,12 +12,14 @@ pub const MPP_FACILITATOR_SCRIPT: &str = "dist/main.js";
 /// True when the sibling mpp-facilitator-mvx repo is built and can load at runtime.
 pub fn mpp_facilitator_available() -> bool {
     let base = std::path::Path::new(MPP_FACILITATOR_CWD);
-    if !base.join("dist/app.module.js").is_file() {
+    if !base.join("dist/main.js").is_file() || !base.join("dist/app.module.js").is_file() {
         return false;
     }
+    // Load the module graph only — main.js boots Nest and needs PORT + MPP_SECRET_KEY.
     std::process::Command::new("node")
         .current_dir(base)
-        .args(["-e", "require('./dist/main.js')"])
+        .env("MPP_SECRET_KEY", "availability-check")
+        .args(["-e", "require('./dist/app.module.js')"])
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .status()
@@ -117,7 +119,7 @@ pub async fn start_relayer(
     base_url
 }
 
-/// Start mpp-facilitator-mvx on a free port and wait until `/health` responds.
+/// Start mpp-facilitator-mvx on a free port and wait until `/openapi.json` responds.
 pub async fn start_mpp_facilitator(
     pm: &mut ProcessManager,
     gateway_url: &str,
@@ -130,6 +132,10 @@ pub async fn start_mpp_facilitator(
         ("NETWORK_PROVIDER".into(), gateway_url.to_string()),
         ("GATEWAY_URL".into(), gateway_url.to_string()),
         ("CHAIN_ID".into(), chain_id.to_string()),
+        (
+            "DATABASE_URL".into(),
+            "file:./prisma/integration-test.db".into(),
+        ),
     ];
 
     for (key, value) in extra_env {
@@ -146,6 +152,6 @@ pub async fn start_mpp_facilitator(
     .expect("Failed to start MPP facilitator");
 
     let base_url = format!("http://localhost:{port}");
-    wait_for_http_ok(&format!("{base_url}/health"), 30).await;
+    wait_for_http_ok(&format!("{base_url}/openapi.json"), 30).await;
     base_url
 }

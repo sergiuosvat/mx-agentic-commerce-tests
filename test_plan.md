@@ -127,7 +127,10 @@ graph TD
 | `suite_l`–`t` | MCP discovery, agent-to-agent, extended MCP |
 | `suite_u`–`y` | Facilitator/relayer advanced, E2E flows |
 | `suite_z` | MPP + facilitator integration |
-| `suite_session_simulator` | Simulator session helpers |
+| `suite_session_extended` | MPP session top-up, slashing, negative flows (chain-sim) |
+| `suite_aa` | MPP facilitator session/subscription 402 resources |
+| `suite_ec` | Facilitator offline (EC-002) |
+| `suite_v3` | Relayer quota HTTP 429 |
 
 ### TypeScript
 

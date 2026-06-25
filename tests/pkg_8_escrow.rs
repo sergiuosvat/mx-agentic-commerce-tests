@@ -2,6 +2,8 @@ mod common;
 
 #[path = "pkg_8_escrow/test_deposit_egld.rs"]
 mod test_deposit_egld;
+#[path = "pkg_8_escrow/test_deposit_esdt.rs"]
+mod test_deposit_esdt;
 #[path = "pkg_8_escrow/test_deposit_release.rs"]
 mod test_deposit_release;
 #[path = "pkg_8_escrow/test_error_edge_cases.rs"]

@@ -108,7 +108,43 @@ impl EscrowInteractor {
         println!("Deposited {} EGLD for job '{}'", amount_wei, job_id);
     }
 
-    /// Deposit EGLD and expect an error.
+    #[allow(clippy::too_many_arguments)]
+    /// Deposit ESDT into escrow for a job.
+    pub async fn deposit_esdt(
+        &self,
+        interactor: &mut Interactor,
+        job_id: &str,
+        receiver: &Address,
+        poa_hash: &str,
+        deadline: u64,
+        token_id: &str,
+        amount: u64,
+    ) {
+        let job_id_buf: ManagedBuffer<StaticApi> = ManagedBuffer::new_from_bytes(job_id.as_bytes());
+        let receiver_addr: ManagedAddress<StaticApi> = ManagedAddress::from_address(receiver);
+        let poa_buf: ManagedBuffer<StaticApi> = ManagedBuffer::new_from_bytes(poa_hash.as_bytes());
+        let esdt_token = EsdtTokenIdentifier::from(token_id);
+
+        interactor
+            .tx()
+            .from(&self.wallet_address)
+            .to(&self.contract_address)
+            .gas(600_000_000)
+            .payment((esdt_token, 0u64, BigUint::from(amount)))
+            .raw_call("deposit")
+            .argument(&job_id_buf)
+            .argument(&receiver_addr)
+            .argument(&poa_buf)
+            .argument(&deadline)
+            .run()
+            .await;
+
+        println!(
+            "Deposited {} units of {} for job '{}'",
+            amount, token_id, job_id
+        );
+    }
+
     pub async fn deposit_egld_expect_err(
         &self,
         interactor: &mut Interactor,
